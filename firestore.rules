@@ -1,0 +1,94 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitive Definitions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerified() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Phase 4: Validation Blueprints
+    function isValidUser(data) {
+      return data.uid == request.auth.uid &&
+             data.email is string && data.email.size() <= 256 &&
+             (data.get('displayName', null) == null || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (data.get('personalityProfile', null) == null || data.personalityProfile is map);
+    }
+
+    function isValidPlanet(data) {
+      return data.userId == request.auth.uid &&
+             data.stage is int && data.stage >= 0 && data.stage <= 5 &&
+             data.totalInputs is int && data.totalInputs >= 0 &&
+             data.status in ['active', 'archived'] &&
+             data.get('emotionalSummary', '') is string && data.emotionalSummary.size() <= 2000;
+    }
+
+    function isValidJournal(data) {
+      return data.userId == request.auth.uid &&
+             isValidId(data.planetId) &&
+             data.text is string && data.text.size() <= 10000 &&
+             data.analysis is map;
+    }
+
+    // 1. Users Collection
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUser(incoming()) && incoming().createdAt == request.time;
+      allow update: if isOwner(userId) && isValidId(userId) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'personalityProfile'])
+      );
+    }
+
+    // 2. Planets Collection
+    match /planets/{planetId} {
+      allow get: if isVerified() && isOwner(existing().userId) && isValidId(planetId);
+      allow list: if isVerified() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isVerified() && isValidPlanet(incoming()) && 
+                    incoming().createdAt == request.time &&
+                    incoming().updatedAt == request.time;
+      
+      allow update: if isVerified() && isOwner(existing().userId) && 
+                    incoming().updatedAt == request.time && (
+        // Action: Evolve
+        (existing().status == 'active' && 
+         incoming().diff(existing()).affectedKeys().hasOnly(['stage', 'totalInputs', 'currentEmotion', 'emotionalBlend', 'emotionalSummary', 'updatedAt', 'status']))
+      );
+    }
+
+    // 3. Journals Collection
+    match /journals/{journalId} {
+      allow get: if isVerified() && isOwner(existing().userId) && isValidId(journalId);
+      allow list: if isVerified() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isVerified() && isValidJournal(incoming()) && 
+                    incoming().createdAt == request.time &&
+                    exists(/databases/$(database)/documents/planets/$(incoming().planetId)) &&
+                    get(/databases/$(database)/documents/planets/$(incoming().planetId)).data.userId == request.auth.uid;
+    }
+  }
+}

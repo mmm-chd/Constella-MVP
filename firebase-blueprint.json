@@ -1,0 +1,78 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and long-term emotional memory",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "personalityProfile": {
+          "type": "object",
+          "properties": {
+            "communication_style": { "type": "string" },
+            "stress_pattern": { "type": "string" },
+            "comfort_topics": { "type": "array", "items": { "type": "string" } },
+            "motivation_type": { "type": "string" },
+            "preferred_response_style": { "type": "string" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Planet": {
+      "title": "Planet",
+      "description": "A planet representing an emotional chapter",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "stage": { "type": "integer" },
+        "totalInputs": { "type": "integer" },
+        "currentEmotion": { "type": "string" },
+        "emotionalBlend": { "type": "array", "items": { "type": "string" } },
+        "emotionalSummary": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "archived"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "stage", "totalInputs", "status"]
+    },
+    "Journal": {
+      "title": "Journal",
+      "description": "A single journal entry",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "planetId": { "type": "string" },
+        "text": { "type": "string" },
+        "analysis": {
+          "type": "object",
+          "properties": {
+            "dominantEmotion": { "type": "string" },
+            "blend": { "type": "array", "items": { "type": "string" } },
+            "intensity": { "type": "number" },
+            "summary": { "type": "string" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "planetId", "text", "analysis", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "planets/{planetId}": {
+      "schema": "Planet",
+      "description": "Universal planets collection"
+    },
+    "journals/{journalId}": {
+      "schema": "Journal",
+      "description": "Universal journals collection"
+    }
+  }
+}

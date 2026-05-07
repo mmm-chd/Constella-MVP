@@ -1,0 +1,10 @@
+{
+  "name": "Constella",
+  "description": "A space-themed AI journaling application where emotions evolve an entire living universe. Talk to Astronot, your AI companion, and watch your emotional journey shape planets and constellations.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": [
+    "AI-powered emotional analysis",
+    "Procedural world-building",
+    "Interactive journaling"
+  ]
+}
