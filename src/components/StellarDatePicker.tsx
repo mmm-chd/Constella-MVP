@@ -90,8 +90,8 @@ export const StellarDatePicker: React.FC<StellarDatePickerProps> = ({ isOpen, on
               </div>
 
               <div className="grid grid-cols-7 gap-1">
-                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => (
-                  <div key={d} className="h-10 flex items-center justify-center text-[10px] font-black text-white/20 uppercase">
+                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                  <div key={`${d}-${i}`} className="h-10 flex items-center justify-center text-[10px] font-black text-white/20 uppercase">
                     {d}
                   </div>
                 ))}

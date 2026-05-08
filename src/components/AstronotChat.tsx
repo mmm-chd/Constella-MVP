@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Bot, Sparkles, BookHeart, Wand2, Rocket, Mic, Image as ImageIcon, AudioLines, X } from 'lucide-react';
+import { Send, Rocket, Mic, Image as ImageIcon, AudioLines, BookHeart, Sparkles } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import { cn } from '../lib/utils';
 
 interface Message {
   id: string;
@@ -193,14 +195,22 @@ export const AstronotChat: React.FC<AstronotChatProps> = ({
                     key={msg.id}
                     initial={{ opacity: 0, y: 20, filter: "blur(10px)" }}
                     animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                    className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                    className={cn(
+                      "flex",
+                      msg.sender === 'user' ? 'justify-end' : 'justify-start'
+                    )}
                   >
-                    <div className={`max-w-[85%] px-6 py-4 rounded-[2rem] text-[15px] leading-relaxed tracking-wide ${
+                    <div className={cn(
+                      "max-w-[85%] px-6 py-4 rounded-[2rem] text-[15px] leading-relaxed tracking-wide",
                       msg.sender === 'user' 
                         ? 'bg-blue-600/20 border border-blue-500/20 text-blue-50 rounded-tr-none' 
-                        : 'bg-white/5 border border-white/5 text-zinc-300 rounded-tl-none'
-                    }`}>
-                      {msg.text}
+                        : 'bg-white/5 border border-white/5 text-zinc-300 rounded-tl-none markdown-body'
+                    )}>
+                      {msg.sender === 'astronot' ? (
+                        <ReactMarkdown>{msg.text}</ReactMarkdown>
+                      ) : (
+                        msg.text
+                      )}
                     </div>
                   </motion.div>
                 ))}
