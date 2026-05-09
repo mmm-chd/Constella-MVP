@@ -46,7 +46,7 @@ export async function generatePlanetDescription(stage: string, emotion: string =
 
 export async function analyzeJournal(text: string, previousContext: string = "") {
   const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
+    model: "gemini-2.5-flash",
     contents: `Analyze the following journal entry within the context of the user's emotional history if provided.
     
     Emotional History Context: ${previousContext}

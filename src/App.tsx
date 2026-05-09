@@ -204,6 +204,7 @@ export default function App() {
     if (totalInputs <= 35) return PlanetStage.LIVING;
     return PlanetStage.ASCENDED;
   };
+  
 
   const onSendMessage = async (texts: string[]) => {
     if (!user || !currentPlanet || !currentPlanet.id) return;
@@ -243,6 +244,9 @@ export default function App() {
 
       const nextTotalInputs = currentPlanet.totalInputs + 1;
       const nextStage = getPlanetStage(nextTotalInputs);
+      console.log("CURRENT:", currentPlanet.totalInputs);
+      console.log("NEXT:", nextTotalInputs);
+      console.log("STAGE:", nextStage);
       
       const updatedPlanet = {
         totalInputs: nextTotalInputs,
