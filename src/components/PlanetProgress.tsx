@@ -10,7 +10,7 @@ interface ProgressProps {
 export const PlanetProgress: React.FC<ProgressProps> = ({ planet }) => {
   const stats = [
     { label: 'Sync Streak', value: '7 Days', icon: Zap, color: 'text-orange-400' },
-    { label: 'Evolution Rate', value: `${Math.round((planet?.totalInputs / 35) * 100)}%`, icon: TrendingUp, color: 'text-blue-400' },
+    { label: 'Evolution Rate', value: `${Math.round(((planet?.totalInputs || 0) / 35) * 100)}%`, icon: TrendingUp, color: 'text-blue-400' },
     { label: 'Core Stability', value: 'High', icon: BarChart3, color: 'text-emerald-400' },
   ];
 

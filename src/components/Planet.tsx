@@ -1,12 +1,243 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { Sphere, MeshDistortMaterial, Float } from '@react-three/drei';
+import * as THREE from 'three';
 import { PlanetStage } from '@/src/types';
+import { Sparkles, Wind, Droplets, Flame } from 'lucide-react';
 
 interface PlanetProps {
   stage: PlanetStage;
   emotion?: string;
   intensity?: number;
 }
+
+const PlanetBody: React.FC<{ stage: PlanetStage; emotion?: string; intensity?: number; colors: any }> = ({ stage, emotion, intensity, colors }) => {
+  const mesh = useRef<THREE.Mesh>(null!);
+  const glowMesh = useRef<THREE.Mesh>(null!);
+  const cloudsMesh = useRef<THREE.Mesh>(null!);
+  const terrainMesh = useRef<THREE.Mesh>(null!);
+  const bandsMesh = useRef<THREE.Mesh>(null!);
+  const meshMaterial = useRef<any>(null!);
+  const cloudsMaterial = useRef<any>(null!);
+  const lavaMesh = useRef<THREE.Mesh>(null!);
+  
+  const lastStage = useRef(stage);
+  const evolutionTime = useRef(0);
+  
+  useEffect(() => {
+    if (stage !== lastStage.current) {
+      evolutionTime.current = 1.0;
+      lastStage.current = stage;
+    }
+  }, [stage]);
+
+  const features = useMemo(() => {
+    // Generate static topographical features based on stage
+    const count = 15;
+    return [...Array(count)].map((_, i) => ({
+      position: [
+        Math.sin(i * 2.5) * 2.1,
+        Math.cos(i * 1.8) * 2.1,
+        Math.sin(i * 4.2) * 2.1
+      ] as [number, number, number],
+      scale: 0.15 + Math.random() * 0.35,
+      type: i % 3 === 0 ? 'mountain' : 'crater',
+      rotation: [Math.random() * Math.PI, Math.random() * Math.PI, 0] as [number, number, number]
+    }));
+  }, []);
+
+  useFrame((state) => {
+    const t = state.clock.getElapsedTime();
+    const emotionFactor = emotion ? 1.5 : 1;
+    const normalizedIntensity = (intensity || 5) / 10;
+    
+    // Evolution pulse logic
+    if (evolutionTime.current > 0) {
+      evolutionTime.current -= 0.012; // Complete in ~1.4s
+    }
+    const pulse = evolutionTime.current > 0 ? evolutionTime.current : 0;
+    const pulseEase = Math.sin(pulse * Math.PI);
+    
+    if (mesh.current) {
+      mesh.current.rotation.y = t * 0.1;
+      mesh.current.rotation.z = Math.sin(t * 0.2) * 0.05;
+      mesh.current.scale.setScalar(1 + pulseEase * 0.15);
+    }
+    
+    if (lavaMesh.current) {
+      lavaMesh.current.rotation.y = t * 0.15;
+      lavaMesh.current.scale.setScalar(1.005 + Math.sin(t * 2) * 0.005);
+    }
+    
+    if (glowMesh.current) {
+      glowMesh.current.scale.setScalar((1.05 + Math.sin(t * 1.5) * 0.02) * (1 + pulseEase * 0.3));
+    }
+
+    if (cloudsMesh.current) {
+      cloudsMesh.current.rotation.y = t * 0.12 * emotionFactor;
+      cloudsMesh.current.rotation.x = Math.sin(t * 0.08) * 0.1;
+      cloudsMesh.current.scale.setScalar(1.08 + pulseEase * 0.2 + Math.sin(t * 0.5) * 0.01);
+    }
+
+    if (terrainMesh.current) {
+      terrainMesh.current.rotation.y = -t * 0.05;
+      terrainMesh.current.scale.setScalar(1.03 + pulseEase * 0.1);
+    }
+
+    if (bandsMesh.current) {
+      bandsMesh.current.rotation.y = t * 0.08;
+    }
+
+    if (meshMaterial.current) {
+      if (meshMaterial.current.distort !== undefined) {
+        meshMaterial.current.distort = (stage === PlanetStage.MAGMA ? 0.4 : 0.1) + pulseEase * 0.4 + normalizedIntensity * 0.1;
+      }
+      if (meshMaterial.current.emissiveIntensity !== undefined) {
+        // Lava flow simulation via emissive intensity pulsing
+        const lavaPulse = stage === PlanetStage.MAGMA ? 0.8 + Math.sin(t * 3) * 0.4 : 0;
+        meshMaterial.current.emissiveIntensity = lavaPulse + pulseEase * 2 + normalizedIntensity * 0.5;
+      }
+    }
+
+    if (cloudsMaterial.current && cloudsMaterial.current.distort !== undefined) {
+      cloudsMaterial.current.distort = 0.3 + pulseEase * 0.5 + Math.sin(t * 0.2) * 0.1;
+    }
+  });
+
+  const isBandedEmotion = ['sad', 'sedih', 'love', 'cinta', 'surprised', 'terkejut', 'happy', 'bahagia'].includes(emotion?.toLowerCase() || '');
+
+  return (
+    <Float speed={1.5} rotationIntensity={0.2} floatIntensity={0.3}>
+      <group>
+        {/* Atmosphere/Glow Layer */}
+        <mesh ref={glowMesh} scale={1.2}>
+          <sphereGeometry args={[2.2, 32, 32]} />
+          <meshBasicMaterial 
+            color={colors.glow} 
+            transparent 
+            opacity={0.08} 
+            side={THREE.BackSide} 
+          />
+        </mesh>
+
+        {/* Main Body */}
+        <mesh ref={mesh}>
+          <sphereGeometry args={[2.2, 64, 64]} />
+          {stage === PlanetStage.ASTEROID ? (
+             <meshStandardMaterial 
+              ref={meshMaterial}
+              color={colors.main}
+              roughness={1}
+              metalness={0.2}
+              flatShading
+            />
+          ) : (
+            <MeshDistortMaterial
+              ref={meshMaterial}
+              color={colors.main}
+              speed={stage === PlanetStage.MAGMA ? 3 : 1.2}
+              distort={stage === PlanetStage.MAGMA ? 0.4 : 0.1}
+              radius={1}
+              roughness={0.6}
+              metalness={0.1}
+              emissive={stage === PlanetStage.MAGMA ? colors.accent : "#000000"}
+              emissiveIntensity={stage === PlanetStage.MAGMA ? 0.8 : 0}
+            />
+          )}
+        </mesh>
+
+        {/* Bands/Stripes Layer - For "Love", "Surprised", "Sad", "Happy" */}
+        {isBandedEmotion && (
+          <mesh ref={bandsMesh} scale={1.01}>
+            <sphereGeometry args={[2.22, 64, 32]} />
+            <meshStandardMaterial 
+              color={colors.bands} 
+              transparent 
+              opacity={0.4} 
+              wireframe 
+              wireframeLinewidth={2}
+            />
+          </mesh>
+        )}
+
+        {/* Terrain Layer - Craters/Details */}
+        {(stage === PlanetStage.ASTEROID || stage === PlanetStage.LIVING || stage === PlanetStage.ASCENDED) && (
+          <mesh ref={terrainMesh} scale={1.03}>
+            <sphereGeometry args={[2.2, 48, 48]} />
+            <meshStandardMaterial 
+              color={colors.accent} 
+              transparent 
+              opacity={stage === PlanetStage.ASTEROID ? 0.8 : 0.4} 
+              wireframe={stage === PlanetStage.ASTEROID}
+              roughness={1}
+              metalness={0}
+            />
+          </mesh>
+        )}
+
+        {/* Lava Flow Layer (Magma Stage Only) */}
+        {stage === PlanetStage.MAGMA && (
+          <mesh ref={lavaMesh} scale={1.01}>
+            <sphereGeometry args={[2.21, 64, 64]} />
+            <meshStandardMaterial 
+              color={colors.accent} 
+              emissive={colors.accent}
+              emissiveIntensity={1.5}
+              transparent
+              opacity={0.6}
+              wireframe
+            />
+          </mesh>
+        )}
+
+        {/* Topographical Features (Mountains & Craters) */}
+        {(stage === PlanetStage.LIVING || stage === PlanetStage.ASCENDED || stage === PlanetStage.ASTEROID) && (
+          <group>
+            {features.map((feature, i) => (
+              <mesh 
+                key={i} 
+                position={feature.position} 
+                scale={feature.scale}
+                rotation={feature.rotation}
+              >
+                {feature.type === 'mountain' ? (
+                  <coneGeometry args={[1, 1.5, 8]} />
+                ) : (
+                  <sphereGeometry args={[1, 16, 16]} />
+                )}
+                <meshStandardMaterial 
+                  color={colors.accent} 
+                  transparent 
+                  opacity={stage === PlanetStage.ASTEROID ? 0.9 : 0.5} 
+                  roughness={1}
+                />
+              </mesh>
+            ))}
+          </group>
+        )}
+
+        {/* Atmospheric/Cloud Layer - Selective based on emotion/stage */}
+        {(stage === PlanetStage.LIVING || stage === PlanetStage.ASCENDED || stage === PlanetStage.MAGMA) && (
+          <mesh ref={cloudsMesh} scale={1.08}>
+            <sphereGeometry args={[2.2, 64, 64]} />
+            <MeshDistortMaterial
+              ref={cloudsMaterial}
+              color={colors.atmospheric}
+              transparent
+              opacity={stage === PlanetStage.MAGMA ? 0.15 : 0.3}
+              speed={stage === PlanetStage.MAGMA ? 5 : 1.5}
+              distort={0.3}
+              radius={1}
+              roughness={0.1}
+              metalness={0}
+            />
+          </mesh>
+        )}
+      </group>
+    </Float>
+  );
+};
 
 const Sparkle: React.FC<{ delay: number; x: string; y: string }> = ({ delay, x, y }) => (
   <motion.div
@@ -38,7 +269,7 @@ const Cloud: React.FC<{ delay: number; x: string; y: string; color?: string }> =
 const EmotionWeather: React.FC<{ emotion: string }> = ({ emotion }) => {
   const e = emotion.toLowerCase();
   
-  if (e === 'happy') {
+  if (e.includes('happy') || e.includes('bahagia') || e.includes('senang') || e.includes('excited') || e.includes('semangat')) {
     return (
       <div className="absolute inset-0 pointer-events-none">
         <Sparkle delay={0} x="20%" y="30%" />
@@ -46,60 +277,67 @@ const EmotionWeather: React.FC<{ emotion: string }> = ({ emotion }) => {
         <Sparkle delay={1.2} x="40%" y="60%" />
         <Sparkle delay={1.8} x="80%" y="70%" />
         <Sparkle delay={2.5} x="10%" y="80%" />
+        {e.includes('excited') && (
+          <motion.div 
+            animate={{ opacity: [0, 0.4, 0], scale: [0.8, 1.2, 0.8] }}
+            transition={{ duration: 3, repeat: Infinity }}
+            className="absolute inset-0 bg-yellow-400/10 blur-3xl"
+          />
+        )}
       </div>
     );
   }
 
-  if (e === 'sad') {
+  if (e.includes('sad') || e.includes('sedih') || e.includes('kesepian')) {
     return (
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute inset-0 bg-blue-900/20 backdrop-blur-[1px]" />
-        {[...Array(6)].map((_, i) => (
+        {[...Array(8)].map((_, i) => (
           <motion.div
             key={i}
             animate={{ y: [0, 100] }}
             transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.2, ease: "linear" }}
-            className="absolute w-[1px] h-6 bg-blue-300/30"
-            style={{ left: `${15 + i * 15}%`, top: '-24px' }}
+            className="absolute w-[1px] h-8 bg-blue-300/40"
+            style={{ left: `${10 + i * 12}%`, top: '-30px' }}
           />
         ))}
       </div>
     );
   }
 
-  if (e === 'angry') {
+  if (e.includes('angry') || e.includes('marah') || e.includes('kesal')) {
     return (
       <div className="absolute inset-0 pointer-events-none">
         <motion.div 
-          animate={{ opacity: [0.1, 0.4, 0.1] }}
+          animate={{ opacity: [0.1, 0.5, 0.1] }}
           transition={{ duration: 2, repeat: Infinity }}
-          className="absolute inset-0 bg-red-600/20"
+          className="absolute inset-0 bg-red-600/30"
         />
-        <div className="absolute inset-0 mix-blend-overlay opacity-30">
+        <div className="absolute inset-0 mix-blend-overlay opacity-50">
           <svg className="w-full h-full" viewBox="0 0 100 100">
-            <path d="M10,20 Q30,50 10,80 M60,10 Q80,40 50,70" fill="none" stroke="#FF4D4D" strokeWidth="2" strokeDasharray="4 4" />
+            <path d="M10,20 Q30,50 10,80 M60,10 Q80,40 50,70" fill="none" stroke="#FF4D4D" strokeWidth="3" strokeDasharray="5 5" />
           </svg>
         </div>
       </div>
     );
   }
 
-  if (e === 'love') {
+  if (e.includes('love') || e.includes('cinta') || e.includes('sayang') || e.includes('affection')) {
     return (
       <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
         <motion.div
-          animate={{ scale: [1, 1.1, 1] }}
-          transition={{ duration: 3, repeat: Infinity }}
-          className="w-full h-full bg-pink-400/10 rounded-full blur-xl"
+          animate={{ scale: [1, 1.2, 1], opacity: [0.1, 0.2, 0.1] }}
+          transition={{ duration: 4, repeat: Infinity }}
+          className="w-full h-full bg-pink-400/20 rounded-full blur-2xl"
         />
-        {[...Array(3)].map((_, i) => (
+        {[...Array(5)].map((_, i) => (
           <motion.div
             key={i}
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: -40, opacity: [0, 1, 0] }}
-            transition={{ duration: 4, repeat: Infinity, delay: i * 1.3 }}
-            className="absolute text-pink-400/40 text-xs"
-            style={{ left: `${30 + i * 20}%` }}
+            initial={{ y: 30, opacity: 0 }}
+            animate={{ y: -60, opacity: [0, 1, 0] }}
+            transition={{ duration: 5, repeat: Infinity, delay: i * 1 }}
+            className="absolute text-pink-400/60 text-sm"
+            style={{ left: `${20 + i * 15}%` }}
           >
             ♥
           </motion.div>
@@ -108,97 +346,419 @@ const EmotionWeather: React.FC<{ emotion: string }> = ({ emotion }) => {
     );
   }
 
-  return null;
-};
-
-const PlanetFace: React.FC<{ emotion?: string }> = ({ emotion }) => {
-  if (!emotion || emotion === 'neutral') {
+  if (e.includes('fear') || e.includes('takut') || e.includes('anxious') || e.includes('khawatir')) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-        <div className="flex gap-6 mb-4">
-          <div className="w-2 h-2 bg-black/50 rounded-full" />
-          <div className="w-2 h-2 bg-black/50 rounded-full" />
-        </div>
-        <div className="absolute top-[60%] w-8 h-[1px] bg-black/30" />
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <motion.div 
+          animate={{ opacity: [0, 0.3, 0] }}
+          transition={{ duration: 0.1, repeat: Infinity, repeatDelay: Math.random() * 4 }}
+          className="absolute inset-0 bg-white"
+        />
+        <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-[3px]" />
       </div>
     );
   }
 
+  if (e.includes('calm') || e.includes('tenang') || e.includes('peaceful') || e.includes('damai')) {
+    return (
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <motion.div
+          animate={{ 
+            background: [
+              "radial-gradient(circle at 50% 50%, rgba(52, 211, 153, 0.1) 0%, transparent 70%)",
+              "radial-gradient(circle at 60% 40%, rgba(52, 211, 153, 0.2) 0%, transparent 70%)",
+              "radial-gradient(circle at 50% 50%, rgba(52, 211, 153, 0.1) 0%, transparent 70%)",
+            ]
+          }}
+          transition={{ duration: 8, repeat: Infinity }}
+          className="absolute inset-0"
+        />
+      </div>
+    );
+  }
+
+  if (e.includes('grateful') || e.includes('bersyukur') || e.includes('touched') || e.includes('tersentuh')) {
+    return (
+      <div className="absolute inset-0 pointer-events-none">
+        <motion.div 
+          animate={{ opacity: [0.1, 0.3, 0.1] }}
+          transition={{ duration: 6, repeat: Infinity }}
+          className="absolute inset-0 bg-cyan-400/10 blur-3xl"
+        />
+      </div>
+    );
+  }
+
+  return null;
+};
+
+const PlanetFace: React.FC<{ emotion?: string; color?: string }> = ({ emotion, color = "rgba(0,0,0,0.5)" }) => {
+  const e = emotion?.toLowerCase() || 'neutral';
+  
   const renderFace = () => {
-    switch (emotion.toLowerCase()) {
-      case 'happy':
-        return (
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-            <div className="flex gap-8 mb-2">
-              <div className="text-black/60 text-2xl font-black">^</div>
-              <div className="text-black/60 text-2xl font-black">^</div>
-            </div>
-            <div className="w-12 h-6 border-b-[3px] border-black/60 rounded-full" />
+    // Excited / Very Happy
+    if (e.includes('excited') || e.includes('semangat') || e.includes('senang sekali')) {
+      return (
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+          <div className="flex gap-12 mb-2">
+            <motion.div animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 1, repeat: Infinity }} className="text-3xl font-black" style={{ color }}>O</motion.div>
+            <motion.div animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 1, repeat: Infinity, delay: 0.1 }} className="text-3xl font-black" style={{ color }}>O</motion.div>
           </div>
-        );
-      case 'sad':
-        return (
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-            <div className="flex gap-6 mb-3 opacity-70">
-              <div className="w-3 h-1.5 bg-black rounded-full rotate-[20deg]" />
-              <div className="w-3 h-1.5 bg-black rounded-full -rotate-[20deg]" />
-            </div>
-            <div className="w-8 h-4 border-t-[3px] border-black/60 rounded-full mt-3" />
-          </div>
-        );
-      case 'love':
-        return (
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-            <div className="flex gap-8 mb-2">
-              <div className="text-red-500/80 text-xl animate-pulse">♥</div>
-              <div className="text-red-500/80 text-xl animate-pulse">♥</div>
-            </div>
-            <div className="w-14 h-7 border-b-[3px] border-black/40 rounded-full" />
-          </div>
-        );
-      case 'angry':
-        return (
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-            <div className="flex gap-6 mb-2">
-              <div className="w-4 h-1.5 bg-black/70 rounded-full rotate-[35deg]" />
-              <div className="w-4 h-1.5 bg-black/70 rounded-full -rotate-[35deg]" />
-            </div>
-            <div className="w-10 h-3 bg-black/70 rounded-full mt-4" />
-          </div>
-        );
-      case 'touched':
-        return (
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-            <div className="flex gap-8 mb-2">
-              <div className="w-3 h-3 bg-black/70 rounded-full relative">
-                <div className="absolute -bottom-1.5 -right-1.5 w-1.5 h-1.5 bg-white/90 rounded-full animate-pulse" />
-              </div>
-              <div className="w-3 h-3 bg-black/70 rounded-full relative">
-                 <div className="absolute -bottom-1.5 -right-1.5 w-1.5 h-1.5 bg-white/90 rounded-full animate-pulse" />
-              </div>
-            </div>
-            <div className="w-10 h-5 border-b-[3px] border-black/60 rounded-full" />
-          </div>
-        );
-      case 'disappointed':
-        return (
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-            <div className="flex gap-6 mb-3 opacity-60">
-               <div className="w-3 h-1.5 bg-black rounded-full rotate-[-15deg]" />
-               <div className="w-3 h-1.5 bg-black rounded-full rotate-[15deg]" />
-            </div>
-            <div className="w-10 h-4 border-t-[3px] border-black/50 rounded-full" />
-          </div>
-        );
-      default:
-        return null;
+          <motion.div 
+            animate={{ width: [40, 60, 40], height: [20, 30, 20] }} 
+            transition={{ duration: 0.8, repeat: Infinity }}
+            className="border-b-[5px] rounded-full" style={{ borderColor: color, width: 40, height: 20 }} 
+          />
+        </div>
+      );
     }
+    
+    if (e.includes('happy') || e.includes('bahagia') || e.includes('senang')) {
+      return (
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+          <div className="flex gap-10 mb-2">
+            <motion.div 
+              animate={{ 
+                scaleY: [1, 0.4, 1, 1], // Blink
+                scaleX: [1, 1.2, 1, 1], // Widen
+                y: [0, -1, 0]
+              }} 
+              transition={{ 
+                duration: 4, 
+                repeat: Infinity, 
+                times: [0, 0.05, 0.1, 1],
+                delay: Math.random() 
+              }} 
+              className="text-2xl font-black" 
+              style={{ color }}
+            >
+              ^
+            </motion.div>
+            <motion.div 
+              animate={{ 
+                scaleY: [1, 0.4, 1, 1], 
+                scaleX: [1, 1.2, 1, 1],
+                y: [0, -1, 0]
+              }} 
+              transition={{ 
+                duration: 4, 
+                repeat: Infinity, 
+                times: [0, 0.05, 0.1, 1], 
+                delay: 0.1 + Math.random() 
+              }} 
+              className="text-2xl font-black" 
+              style={{ color }}
+            >
+              ^
+            </motion.div>
+          </div>
+          <motion.div 
+            animate={{ 
+              scaleX: [1, 1.1, 1],
+              scaleY: [1, 1.05, 1],
+              y: [0, 2, 0]
+            }}
+            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+            className="w-16 h-8 border-b-[4px] rounded-full" 
+            style={{ borderColor: color }} 
+          />
+        </div>
+      );
+    }
+    
+    if (e.includes('sad') || e.includes('sedih') || e.includes('lonely') || e.includes('kesepian')) {
+      return (
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+          <div className="flex gap-8 mb-4">
+            <motion.div 
+              animate={{ 
+                rotate: [15, 12, 18, 15],
+                y: [0, 0.5, -0.5, 0]
+              }}
+              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+              className="w-5 h-2 rounded-full opacity-80" 
+              style={{ backgroundColor: color }} 
+            />
+            <motion.div 
+              animate={{ 
+                rotate: [-15, -12, -18, -15],
+                y: [0, 0.5, -0.5, 0]
+              }}
+              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
+              className="w-5 h-2 rounded-full opacity-80" 
+              style={{ backgroundColor: color }} 
+            />
+          </div>
+          <motion.div 
+            animate={{ 
+              y: [0, 4, 0],
+              scaleX: [1, 0.9, 1.1, 1],
+              height: [24, 28, 24]
+            }}
+            transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+            className="w-12 h-6 border-t-[4px] rounded-full mt-2 opacity-80" 
+            style={{ borderColor: color }} 
+          />
+          <motion.div 
+            animate={{ 
+              y: [0, 40], 
+              opacity: [0, 0.8, 0],
+              scale: [0.5, 1.2, 0.5],
+              x: [-2, 2, -1, 1, 0]
+            }}
+            transition={{ duration: 3, repeat: Infinity, ease: "easeIn" }}
+            className="w-1.5 h-1.5 bg-blue-400 absolute mt-14 mr-10 rounded-full blur-[0.5px]"
+          />
+        </div>
+      );
+    }
+    
+    if (e.includes('love') || e.includes('cinta') || e.includes('sayang')) {
+      return (
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+          <div className="flex gap-10 mb-2">
+            <motion.div 
+              animate={{ 
+                scale: [1, 1.3, 1],
+                rotate: [0, 5, -5, 0]
+              }} 
+              transition={{ duration: 1, repeat: Infinity, ease: "easeInOut" }} 
+              className="text-3xl" style={{ color: '#ec4899' }}
+            >
+              ♥
+            </motion.div>
+            <motion.div 
+              animate={{ 
+                scale: [1, 1.3, 1],
+                rotate: [0, -5, 5, 0]
+              }} 
+              transition={{ duration: 1, repeat: Infinity, ease: "easeInOut", delay: 0.2 }} 
+              className="text-3xl" style={{ color: '#ec4899' }}
+            >
+              ♥
+            </motion.div>
+          </div>
+          <motion.div 
+            animate={{ scaleX: [1, 1.1, 1] }}
+            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+            className="w-14 h-7 border-b-[4px] rounded-full" 
+            style={{ borderColor: color }} 
+          />
+        </div>
+      );
+    }
+    
+    if (e.includes('angry') || e.includes('marah') || e.includes('kesal')) {
+      return (
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+          <div className="flex gap-8 mb-2">
+            <motion.div 
+              animate={{ rotate: [30, 35, 30], y: [0, -1, 0] }}
+              transition={{ duration: 0.1, repeat: Infinity, repeatDelay: 1 }}
+              className="w-7 h-2 rounded-full" 
+              style={{ backgroundColor: color }} 
+            />
+            <motion.div 
+              animate={{ rotate: [-30, -35, -30], y: [0, -1, 0] }}
+              transition={{ duration: 0.1, repeat: Infinity, repeatDelay: 1 }}
+              className="w-7 h-2 rounded-full" 
+              style={{ backgroundColor: color }} 
+            />
+          </div>
+          <motion.div 
+            animate={{ scale: [1, 1.05, 1], x: [-0.3, 0.3, -0.3] }}
+            transition={{ duration: 0.2, repeat: Infinity }}
+            className="w-14 h-4 rounded-full mt-4" style={{ backgroundColor: color }} 
+          />
+        </div>
+      );
+    }
+    
+    if (e.includes('calm') || e.includes('tenang') || e.includes('damai')) {
+      return (
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+          <div className="flex gap-12 mb-6">
+            <motion.div 
+              animate={{ width: [32, 28, 32] }}
+              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+              className="h-[2px] opacity-60" 
+              style={{ backgroundColor: color, width: 32 }} 
+            />
+            <motion.div 
+              animate={{ width: [32, 28, 32] }}
+              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+              className="h-[2px] opacity-60" 
+              style={{ backgroundColor: color, width: 32 }} 
+            />
+          </div>
+          <motion.div 
+            animate={{ opacity: [0.3, 0.5, 0.3] }}
+            transition={{ duration: 8, repeat: Infinity }}
+            className="w-12 h-[2px]" 
+            style={{ backgroundColor: color }} 
+          />
+        </div>
+      );
+    }
+    
+    if (e.includes('shocked') || e.includes('terkejut') || e.includes('kaget') || e.includes('surprised')) {
+      return (
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+          <div className="flex gap-10 mb-4">
+            <motion.div 
+              animate={{ scale: [1, 1.2, 1] }}
+              transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 2 }}
+              className="w-6 h-6 rounded-full border-[2px]" 
+              style={{ borderColor: color }} 
+            />
+            <motion.div 
+              animate={{ scale: [1, 1.2, 1] }}
+              transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 2 }}
+              className="w-6 h-6 rounded-full border-[2px]" 
+              style={{ borderColor: color }} 
+            />
+          </div>
+          <motion.div 
+            animate={{ scale: [1, 1.1, 1] }}
+            transition={{ duration: 1.5, repeat: Infinity }}
+            className="w-10 h-10 border-[3px] rounded-full" 
+            style={{ borderColor: color }} 
+          />
+        </div>
+      );
+    }
+
+    if (e.includes('anxious') || e.includes('khawatir') || e.includes('takut') || e.includes('fear')) {
+      return (
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+          <motion.div 
+            animate={{ 
+              x: [-1, 1, -1, 1, 0],
+              y: [-0.5, 0.5, 0]
+            }} 
+            transition={{ duration: 0.2, repeat: Infinity, repeatDelay: 1 }} 
+            className="flex flex-col items-center"
+          >
+            <div className="flex gap-10 mb-4">
+              <motion.div 
+                animate={{ scaleY: [1, 1.2, 1] }}
+                transition={{ duration: 0.1, repeat: Infinity, repeatDelay: 2 }}
+                className="w-3 h-5 rounded-full" style={{ backgroundColor: color }} 
+              />
+              <motion.div 
+                animate={{ scaleY: [1, 1.2, 1] }}
+                transition={{ duration: 0.1, repeat: Infinity, repeatDelay: 2.1 }}
+                className="w-3 h-5 rounded-full" style={{ backgroundColor: color }} 
+              />
+            </div>
+            <motion.div 
+              animate={{ width: [48, 52, 48] }}
+              transition={{ duration: 0.5, repeat: Infinity }}
+              className="h-3 bg-white/20 border-t-[2px] border-black/40 rounded-sm" 
+              style={{ width: 48 }}
+            />
+          </motion.div>
+        </div>
+      );
+    }
+
+    if (e.includes('grateful') || e.includes('bersyukur') || e.includes('tersentuh') || e.includes('touched')) {
+      return (
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+          <div className="flex gap-10 mb-2">
+            <motion.div 
+              animate={{ scale: [1, 1.1, 1] }}
+              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+              className="w-4 h-4 rounded-full relative" 
+              style={{ backgroundColor: color }}
+            >
+              <div className="absolute inset-0 bg-white/30 rounded-full blur-[2px]" />
+            </motion.div>
+            <motion.div 
+              animate={{ scale: [1, 1.1, 1] }}
+              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
+              className="w-4 h-4 rounded-full relative" 
+              style={{ backgroundColor: color }}
+            >
+              <div className="absolute inset-0 bg-white/30 rounded-full blur-[2px]" />
+            </motion.div>
+          </div>
+          <motion.div 
+            animate={{ 
+              scaleX: [1, 1.05, 1],
+              y: [0, 1, 0]
+            }}
+            transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+            className="w-14 h-7 border-b-[3px] rounded-full" 
+            style={{ borderColor: color }} 
+          />
+        </div>
+      );
+    }
+
+    // Default / Neutral face (as requested, a moon face)
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+        <div className="flex gap-12 mb-8">
+          <motion.div 
+            animate={{ scale: [1, 0.9, 1], opacity: [0.3, 0.4, 0.3] }}
+            transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+            className="w-3 h-3 rounded-full shadow-[inset_1px_1px_2px_rgba(0,0,0,0.5)]" 
+            style={{ backgroundColor: color }} 
+          />
+          <motion.div 
+            animate={{ scale: [1, 0.9, 1], opacity: [0.3, 0.4, 0.3] }}
+            transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 2 }}
+            className="w-3 h-3 rounded-full shadow-[inset_1px_1px_2px_rgba(0,0,0,0.5)]" 
+            style={{ backgroundColor: color }} 
+          />
+        </div>
+        <motion.div 
+          animate={{ width: [56, 50, 56], opacity: [0.15, 0.25, 0.15] }}
+          transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+          className="h-[2px]" 
+          style={{ backgroundColor: color, width: 56 }} 
+        />
+      </div>
+    );
   };
 
   return renderFace();
 };
 
 export const Planet: React.FC<PlanetProps> = ({ stage, emotion, intensity = 5 }) => {
+  const colors = useMemo(() => {
+    switch (stage) {
+      case PlanetStage.ASTEROID: return { main: "#5C6B8A", accent: "#3D4D6A", glow: "#7A8BAE", atmospheric: "#4A5568", bands: "#3D4D6A" };
+      case PlanetStage.MAGMA: return { main: "#1A1A1A", accent: "#FF4D4D", glow: "#FF6B35", atmospheric: "#FF4D4D", bands: "#FF6B35" };
+      case PlanetStage.OCEAN: return { main: "#1E3A8A", accent: "#3B82F6", glow: "#60A5FA", atmospheric: "#93C5FD", bands: "#3B82F6" };
+      case PlanetStage.LIVING:
+      case PlanetStage.ASCENDED:
+        const e = emotion?.toLowerCase() || 'neutral';
+        if (e.includes('happy') || e.includes('bahagia') || e.includes('senang') || e.includes('excited')) 
+          return { main: "#FDBA74", accent: "#F97316", glow: "#FCD34D", atmospheric: "#FEF08A", bands: "#FFF7ED", faceColor: "#F59E0B" };
+        if (e.includes('sad') || e.includes('sedih') || e.includes('lonely') || e.includes('melancholy') || e.includes('kesepian')) 
+          return { main: "#334155", accent: "#475569", glow: "#60A5FA", atmospheric: "#E2E8F0", bands: "#F8FAFC", faceColor: "#94A3B8" };
+        if (e.includes('love') || e.includes('cinta') || e.includes('affection') || e.includes('sayang')) 
+          return { main: "#FDA4AF", accent: "#E11D48", glow: "#F472B6", atmospheric: "#FFE4E6", bands: "#FFF1F2", faceColor: "#ec4899" };
+        if (e.includes('angry') || e.includes('marah') || e.includes('frustrated') || e.includes('kesal')) 
+          return { main: "#450A0A", accent: "#991B1B", glow: "#EF4444", atmospheric: "#EF4444", bands: "#F87171", faceColor: "#DC2626" };
+        if (e.includes('surprised') || e.includes('terkejut') || e.includes('shocked') || e.includes('kaget')) 
+          return { main: "#06B6D4", accent: "#0891B2", glow: "#C084FC", atmospheric: "#D1FAE5", bands: "#A21CAF", faceColor: "#8B5CF6" };
+        if (e.includes('fear') || e.includes('takut') || e.includes('scared') || e.includes('anxious') || e.includes('khawatir')) 
+          return { main: "#1E1B4B", accent: "#312E81", glow: "#4F46E5", atmospheric: "#C7D2FE", bands: "#0F172A", faceColor: "#6366F1" };
+        if (e.includes('touched') || e.includes('tersentuh') || e.includes('grateful') || e.includes('bersyukur')) 
+          return { main: "#AED9E0", accent: "#76B4BD", glow: "#2DD4BF", atmospheric: "#B2DFDB", bands: "#E0F2F1", faceColor: "#14B8A6" };
+        if (e.includes('disappointed') || e.includes('kecewa')) 
+          return { main: "#B8A8C8", accent: "#8B7BAE", glow: "#F3E5F5", atmospheric: "#E1BEE7", bands: "#F3E5F5", faceColor: "rgba(0,0,0,0.6)" };
+        if (e.includes('calm') || e.includes('tenang') || e.includes('peaceful') || e.includes('damai')) 
+          return { main: "#D1FAE5", accent: "#10B981", glow: "#34D399", atmospheric: "#A7F3D0", bands: "#D1FAE5", faceColor: "#10B981" };
+        
+        return { main: "#F0EDE8", accent: "#D9D5CF", glow: "#ffffff", atmospheric: "#F3F4F6", bands: "#F8FAFC", faceColor: "rgba(0,0,0,0.5)" };
+      default: return { main: "#ffffff", accent: "#cccccc", glow: "#ffffff", atmospheric: "#ffffff", bands: "#ffffff" };
+    }
+  }, [stage, emotion]);
+
   const getPlanetStyles = () => {
     switch (stage) {
       case PlanetStage.EMPTY:
@@ -230,20 +790,27 @@ export const Planet: React.FC<PlanetProps> = ({ stage, emotion, intensity = 5 })
         };
       case PlanetStage.LIVING:
       case PlanetStage.ASCENDED:
-        const emotionColors: Record<string, string> = {
-          happy: "radial-gradient(circle at 30% 30%, #FFE066 0%, #FFB347 100%)",
-          sad: "radial-gradient(circle at 30% 30%, #A8B8D0 0%, #7A8BA8 100%)",
-          love: "radial-gradient(circle at 30% 30%, #FFB7C5 0%, #FF8FA3 100%)",
-          angry: "radial-gradient(circle at 30% 30%, #C0392B 0%, #922B21 100%)",
-          neutral: "radial-gradient(circle at 30% 30%, #F0EDE8 0%, #D9D5CF 100%)",
-          disappointed: "radial-gradient(circle at 30% 30%, #B8A8C8 0%, #8B7BAE 100%)",
-          touched: "radial-gradient(circle at 30% 30%, #AED9E0 0%, #76B4BD 100%)",
+        const emotionData: Record<string, { texture: string, label: string }> = {
+          happy: { texture: "radial-gradient(circle at 30% 30%, #FFE066 0%, #FFB347 100%)", label: "Happy Moon" },
+          bahagia: { texture: "radial-gradient(circle at 30% 30%, #FFE066 0%, #FFB347 100%)", label: "Bulan Bahagia" },
+          sad: { texture: "radial-gradient(circle at 30% 30%, #A8B8D0 0%, #7A8BA8 100%)", label: "Sad Moon" },
+          sedih: { texture: "radial-gradient(circle at 30% 30%, #A8B8D0 0%, #7A8BA8 100%)", label: "Bulan Sedih" },
+          love: { texture: "radial-gradient(circle at 30% 30%, #FFB7C5 0%, #FF8FA3 100%)", label: "Lovely Moon" },
+          cinta: { texture: "radial-gradient(circle at 30% 30%, #FFB7C5 0%, #FF8FA3 100%)", label: "Bulan Penuh Cinta" },
+          angry: { texture: "radial-gradient(circle at 30% 30%, #C0392B 0%, #922B21 100%)", label: "Angry Moon" },
+          marah: { texture: "radial-gradient(circle at 30% 30%, #C0392B 0%, #922B21 100%)", label: "Bulan Marah" },
+          fear: { texture: "radial-gradient(circle at 30% 30%, #2D3436 0%, #000000 100%)", label: "Moon of Fear" },
+          takut: { texture: "radial-gradient(circle at 30% 30%, #2D3436 0%, #000000 100%)", label: "Bulan Ketakutan" },
+          neutral: { texture: "radial-gradient(circle at 30% 30%, #F0EDE8 0%, #D9D5CF 100%)", label: "Silent Moon" },
         };
-        const currentEmotion = emotion?.toLowerCase() || 'neutral';
+        const curE = emotion?.toLowerCase() || 'neutral';
+        const match = Object.keys(emotionData).find(key => curE.includes(key)) || 'neutral';
+        const data = emotionData[match];
+        
         return {
           className: `w-72 h-72 shadow-[0_0_60px_rgba(255,255,255,0.1),inset_-25px_-25px_50px_rgba(0,0,0,0.2)]`,
-          label: `Biosphere: ${currentEmotion}`,
-          texture: emotionColors[currentEmotion] || emotionColors.neutral,
+          label: `${data.label}`,
+          texture: data.texture,
           borderRadius: "50% 50% 50% 50% / 51% 49% 51% 49%"
         };
       default:
@@ -254,98 +821,53 @@ export const Planet: React.FC<PlanetProps> = ({ stage, emotion, intensity = 5 })
   const config = getPlanetStyles();
 
   return (
-    <div className="relative flex items-center justify-center p-20">
+    <div className="relative flex items-center justify-center p-20 w-[400px] h-[400px]">
       <AnimatePresence mode="wait">
         <motion.div
           key={stage}
           initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ 
-            scale: 1, 
-            opacity: 1, 
-            y: [0, -15, 0], 
-          }}
+          animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 1.1, opacity: 0 }}
-          transition={{ 
-            duration: 1.2, 
-            ease: "easeOut",
-            y: { duration: 6, repeat: Infinity, ease: "easeInOut" }
-          }}
-          className={`relative ${config.className} overflow-hidden transition-all duration-1000 border-2 border-white/5`}
-          style={{ 
-            background: (config as any).texture || undefined,
-            borderRadius: (config as any).borderRadius || '50%'
-          }}
+          transition={{ duration: 1.2, ease: "easeOut" }}
+          className="absolute inset-0 z-0 pointer-events-none"
         >
-          {/* Detailed Terrain Rendering */}
-          <div className="absolute inset-0 pointer-events-none mix-blend-soft-light opacity-60">
-            {/* Stage-based Terrain */}
-            {stage >= PlanetStage.OCEAN && (
-              <div className="absolute inset-0">
-                {/* Rivers / Flows */}
-                <svg className="w-full h-full opacity-40" viewBox="0 0 100 100">
-                  <path d="M0,50 Q25,30 50,50 T100,50" fill="none" stroke="#60A5FA" strokeWidth="6" strokeLinecap="round" />
-                  <path d="M20,0 Q40,40 20,100" fill="none" stroke="#60A5FA" strokeWidth="4" strokeLinecap="round" />
-                </svg>
-                
-                {/* Landmasses / Biodiversity */}
-                {stage >= PlanetStage.LIVING && (
-                  <>
-                    <div className="absolute top-[10%] left-[25%] w-32 h-20 bg-emerald-600/40 rounded-full blur-md rotate-12" />
-                    <div className="absolute bottom-[20%] right-[15%] w-24 h-24 bg-emerald-700/40 rounded-full blur-md" />
-                    <div className="absolute top-[40%] right-[30%] w-12 h-12 bg-emerald-500/30 rounded-full blur-sm" />
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* Magma Cracks for Stage 2 */}
-            {stage === PlanetStage.MAGMA && (
-              <div className="absolute inset-0">
-                 <svg className="w-full h-full" viewBox="0 0 100 100">
-                    <path d="M30,0 L40,30 L20,50 L50,80 L70,100" fill="none" stroke="#F87171" strokeWidth="2" strokeDasharray="5 5" className="animate-pulse" />
-                    <path d="M80,0 L60,40 L90,60 L70,80" fill="none" stroke="#F87171" strokeWidth="1.5" className="animate-pulse delay-75" />
-                 </svg>
-              </div>
-            )}
-          </div>
-
-          {/* Organic Silhouettes on edges (Reference match) */}
-          <div className="absolute -inset-1 pointer-events-none opacity-40 scale-105">
-            {stage >= PlanetStage.LIVING && (
-              <>
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-4 h-6 bg-emerald-800 rounded-t-full origin-bottom rotate-[-15deg]" />
-                <div className="absolute bottom-0 left-[30%] w-3 h-5 bg-emerald-900 rounded-t-full origin-bottom rotate-[10deg]" />
-                <div className="absolute top-1/2 right-0 -translate-y-1/2 w-5 h-3 bg-emerald-800 rounded-l-full origin-right" />
-              </>
-            )}
-          </div>
-
-          {/* Emotional Weather Effects Overlay */}
-          <EmotionWeather emotion={emotion || 'neutral'} />
-
-          {/* Face Layer */}
-          {(stage === PlanetStage.LIVING || stage === PlanetStage.ASCENDED) && (
-            <PlanetFace emotion={emotion} />
+          {stage !== PlanetStage.EMPTY && (
+            <Canvas camera={{ position: [0, 0, 8], fov: 45 }}>
+              <ambientLight intensity={0.5} />
+              <pointLight position={[10, 10, 10]} intensity={1.5} color="#ffffff" />
+              <spotLight position={[-10, 10, 10]} angle={0.15} penumbra={1} intensity={1} color="#3B82F6" />
+              
+              <PlanetBody stage={stage} emotion={emotion} intensity={intensity} colors={colors} />
+              
+              <fog attach="fog" args={['#050B18', 5, 20]} />
+            </Canvas>
           )}
-
-          {/* Final Lighting & Atmosphere */}
-          <div className="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-white/20 pointer-events-none" />
-          <div className="absolute inset-0 border-[8px] border-white/5 rounded-inherit pointer-events-none" />
-          
-          {/* Glow Pulsing (Ambient) */}
-          <motion.div 
-            animate={{ opacity: [0.1, 0.3, 0.1] }}
-            transition={{ duration: 4, repeat: Infinity }}
-            className={`absolute inset-0 rounded-full blur-2xl pointer-events-none ${
-              emotion?.toLowerCase() === 'angry' ? 'bg-red-500/30' : 
-              emotion?.toLowerCase() === 'happy' ? 'bg-yellow-400/20' :
-              emotion?.toLowerCase() === 'love' ? 'bg-pink-400/20' : 'bg-blue-400/10'
-            }`}
-          />
         </motion.div>
       </AnimatePresence>
 
-      <div className="absolute -bottom-6 text-blue-200/30 font-mono text-[9px] tracking-[0.5em] uppercase font-bold">
+      {/* Expressive Overlays (Atmospheric Layers) */}
+      <div className={`relative ${config.className.split(' ').filter(c => c.startsWith('w-') || c.startsWith('h-')).join(' ')} pointer-events-none z-10 overflow-hidden`}>
+        {/* Emotional Weather Effects Overlay */}
+        <EmotionWeather emotion={emotion || 'neutral'} />
+
+        {/* Face Layer */}
+        {(stage === PlanetStage.LIVING || stage === PlanetStage.ASCENDED) && (
+          <PlanetFace emotion={emotion} color={colors.faceColor as string} />
+        )}
+        
+        {/* Ambient Overlay Glow */}
+        <motion.div 
+          animate={{ opacity: [0.1, 0.2, 0.1] }}
+          transition={{ duration: 4, repeat: Infinity }}
+          className={`absolute inset-0 rounded-full blur-xl pointer-events-none ${
+            emotion?.toLowerCase() === 'angry' ? 'bg-red-500/20' : 
+            emotion?.toLowerCase() === 'happy' ? 'bg-yellow-400/10' :
+            emotion?.toLowerCase() === 'love' ? 'bg-pink-400/10' : 'bg-blue-400/5'
+          }`}
+        />
+      </div>
+
+      <div className="absolute -bottom-6 text-blue-200/30 font-mono text-[9px] tracking-[0.5em] uppercase font-bold text-center w-full">
         {config.label}
       </div>
     </div>

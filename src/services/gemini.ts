@@ -28,6 +28,22 @@ You will be asked to provide TWO outputs for each interaction:
 2. A structured JSON analysis of the emotion.
 `;
 
+export async function generatePlanetDescription(stage: string, emotion: string = "neutral") {
+  const prompt = `Provide a short, evocative atmospheric description (max 3 sentences) for a planet in the "${stage}" stage with a dominant emotional aura of "${emotion}".
+  Focus on unique planetary phenomena, colors, and sensory details. 
+  Example: "The oceans churn with a deep sapphire glow, reflecting the quiet melancholy of the shifting tides."`;
+
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: prompt,
+    config: {
+      systemInstruction: "You are the Planetary Archivist of Constella. Your descriptions are poetic, scientific yet mystical, and very brief.",
+    }
+  });
+
+  return response.text;
+}
+
 export async function analyzeJournal(text: string, previousContext: string = "") {
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
@@ -54,9 +70,10 @@ export async function analyzeJournal(text: string, previousContext: string = "")
               dominantEmotion: { type: Type.STRING },
               blend: { type: Type.ARRAY, items: { type: Type.STRING } },
               intensity: { type: Type.NUMBER, description: "1 to 10" },
+              sentimentScore: { type: Type.NUMBER, description: "Normalized score between 0 and 1. 1 is very positive, 0 is very negative, 0.5 is neutral." },
               summary: { type: Type.STRING }
             },
-            required: ["dominantEmotion", "blend", "intensity", "summary"]
+            required: ["dominantEmotion", "blend", "intensity", "sentimentScore", "summary"]
           }
         },
         required: ["response", "analysis"]

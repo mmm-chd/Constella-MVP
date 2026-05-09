@@ -150,11 +150,8 @@ export default function App() {
         const d = e.createdAt?.seconds ? new Date(e.createdAt.seconds * 1000) : (e.createdAt instanceof Date ? e.createdAt : null);
         return d && d.toDateString() === dateString;
       });
-      if (existingEntry) {
-        setSelectedEntry(existingEntry);
-      } else {
-        setSelectedEntry(null);
-      }
+      // We no longer auto-set selectedEntry here to prevent SummaryView from popping up automatically
+      // Instead, we just have the date selected.
     }
   }, [selectedDate, history]);
 
@@ -344,7 +341,11 @@ export default function App() {
                     type="date"
                     max={new Date().toISOString().split('T')[0]}
                     value={selectedDate.toISOString().split('T')[0]}
-                    onChange={(e) => setSelectedDate(new Date(e.target.value))}
+                    onChange={(e) => {
+                      const newDate = new Date(e.target.value);
+                      setSelectedDate(newDate);
+                      setIsChatting(true);
+                    }}
                     className="absolute inset-0 opacity-0 cursor-pointer z-10"
                   />
                   <div className="text-lg font-bold tracking-tight text-white/90 flex items-center gap-2">
@@ -372,7 +373,18 @@ export default function App() {
                      </div>
                   </motion.div>
                 )}
-                {activeTab === 'journal' && <JournalHistory entries={history} onSelect={setSelectedEntry} />}
+                {activeTab === 'journal' && (
+                  <JournalHistory 
+                    entries={history} 
+                    onSelect={(entry) => {
+                      const d = entry.createdAt?.seconds 
+                        ? new Date(entry.createdAt.seconds * 1000) 
+                        : (entry.createdAt instanceof Date ? entry.createdAt : new Date());
+                      setSelectedDate(d);
+                      setIsChatting(true);
+                    }} 
+                  />
+                )}
                 {activeTab === 'progress' && <PlanetProgress planet={currentPlanet} />}
                 {activeTab === 'settings' && (
                   <div className="w-full max-w-md p-10 space-y-8">

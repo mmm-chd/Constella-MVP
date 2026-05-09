@@ -39,6 +39,7 @@ export interface JournalAnalysis {
   blend: string[];
   intensity: number;
   summary: string;
+  sentimentScore: number;
 }
 
 export interface JournalEntry {
