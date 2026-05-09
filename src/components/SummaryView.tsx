@@ -7,6 +7,20 @@ interface SummaryViewProps {
   entry: any; // Can be a new session or a historical one
   onBack: () => void;
 }
+// Tambah mapping di SummaryView.tsx, sebelum return:
+const normalizeEmotion = (e?: string): string => {
+  if (!e) return 'neutral';
+  const map: Record<string, string> = {
+    anger: 'angry', angry: 'angry',
+    happiness: 'happy', happy: 'happy', joy: 'happy',
+    sadness: 'sad', sad: 'sad',
+    love: 'love',
+    touched: 'touched',
+    disappointed: 'disappointed', disappointment: 'disappointed',
+    neutral: 'neutral',
+  };
+  return map[e.toLowerCase()] || 'neutral';
+};
 
 export const SummaryView: React.FC<SummaryViewProps> = ({ entry, onBack }) => {
   if (!entry) return null;
@@ -56,9 +70,8 @@ export const SummaryView: React.FC<SummaryViewProps> = ({ entry, onBack }) => {
 
         <div className="flex justify-center scale-110">
           <Planet 
-            stage={4} // We show the final planet form in summary
-            emotion={entry.analysis?.dominantEmotion} 
-            intensity={entry.analysis?.intensity}
+            stage={4}
+            emotion={normalizeEmotion(entry.analysis?.dominantEmotion)} 
           />
         </div>
 
