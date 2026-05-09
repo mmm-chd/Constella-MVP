@@ -1,10 +1,6 @@
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { Sphere, MeshDistortMaterial, Float } from '@react-three/drei';
-import * as THREE from 'three';
 import { PlanetStage } from '@/src/types';
-import { Sparkles, Wind, Droplets, Flame } from 'lucide-react';
 
 interface PlanetProps {
   stage: PlanetStage;
@@ -12,865 +8,543 @@ interface PlanetProps {
   intensity?: number;
 }
 
-const PlanetBody: React.FC<{ stage: PlanetStage; emotion?: string; intensity?: number; colors: any }> = ({ stage, emotion, intensity, colors }) => {
-  const mesh = useRef<THREE.Mesh>(null!);
-  const glowMesh = useRef<THREE.Mesh>(null!);
-  const cloudsMesh = useRef<THREE.Mesh>(null!);
-  const terrainMesh = useRef<THREE.Mesh>(null!);
-  const bandsMesh = useRef<THREE.Mesh>(null!);
-  const meshMaterial = useRef<any>(null!);
-  const cloudsMaterial = useRef<any>(null!);
-  const lavaMesh = useRef<THREE.Mesh>(null!);
-  
-  const lastStage = useRef(stage);
-  const evolutionTime = useRef(0);
-  
-  useEffect(() => {
-    if (stage !== lastStage.current) {
-      evolutionTime.current = 1.0;
-      lastStage.current = stage;
-    }
-  }, [stage]);
+const EMOTION_COLORS: Record<string, { main: string; glow: string; alt: string }> = {
+  angry:        { main: '#C0392B', glow: '#FF6B4D', alt: '#7B241C' },
+  happy:        { main: '#FFB347', glow: '#FFE066', alt: '#E67E00' },
+  sad:          { main: '#7A8BA8', glow: '#A8C8E8', alt: '#3A5070' },
+  love:         { main: '#FF8FA3', glow: '#FFB7C5', alt: '#CC4466' },
+  neutral:      { main: '#C8C4BC', glow: '#E8E4DC', alt: '#888480' },
+  touched:      { main: '#76B4BD', glow: '#AED9E0', alt: '#3A8090' },
+  disappointed: { main: '#8B7BAE', glow: '#C8B8D8', alt: '#5A4880' },
+};
 
-  const features = useMemo(() => {
-    // Generate static topographical features based on stage
-    const count = 15;
-    return [...Array(count)].map((_, i) => ({
-      position: [
-        Math.sin(i * 2.5) * 2.1,
-        Math.cos(i * 1.8) * 2.1,
-        Math.sin(i * 4.2) * 2.1
-      ] as [number, number, number],
-      scale: 0.15 + Math.random() * 0.35,
-      type: i % 3 === 0 ? 'mountain' : 'crater',
-      rotation: [Math.random() * Math.PI, Math.random() * Math.PI, 0] as [number, number, number]
-    }));
-  }, []);
+function getEmotionColor(emotion?: string) {
+  const key = emotion?.toLowerCase() || 'neutral';
+  return EMOTION_COLORS[key] || EMOTION_COLORS.neutral;
+}
 
-  useFrame((state) => {
-    const t = state.clock.getElapsedTime();
-    const emotionFactor = emotion ? 1.5 : 1;
-    const normalizedIntensity = (intensity || 5) / 10;
-    
-    // Evolution pulse logic
-    if (evolutionTime.current > 0) {
-      evolutionTime.current -= 0.012; // Complete in ~1.4s
-    }
-    const pulse = evolutionTime.current > 0 ? evolutionTime.current : 0;
-    const pulseEase = Math.sin(pulse * Math.PI);
-    
-    if (mesh.current) {
-      mesh.current.rotation.y = t * 0.1;
-      mesh.current.rotation.z = Math.sin(t * 0.2) * 0.05;
-      mesh.current.scale.setScalar(1 + pulseEase * 0.15);
-    }
-    
-    if (lavaMesh.current) {
-      lavaMesh.current.rotation.y = t * 0.15;
-      lavaMesh.current.scale.setScalar(1.005 + Math.sin(t * 2) * 0.005);
-    }
-    
-    if (glowMesh.current) {
-      glowMesh.current.scale.setScalar((1.05 + Math.sin(t * 1.5) * 0.02) * (1 + pulseEase * 0.3));
-    }
+function seededRand(seed: number) {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
 
-    if (cloudsMesh.current) {
-      cloudsMesh.current.rotation.y = t * 0.12 * emotionFactor;
-      cloudsMesh.current.rotation.x = Math.sin(t * 0.08) * 0.1;
-      cloudsMesh.current.scale.setScalar(1.08 + pulseEase * 0.2 + Math.sin(t * 0.5) * 0.01);
-    }
+function hexToRgb(hex: string) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return { r, g, b };
+}
 
-    if (terrainMesh.current) {
-      terrainMesh.current.rotation.y = -t * 0.05;
-      terrainMesh.current.scale.setScalar(1.03 + pulseEase * 0.1);
-    }
+// ─── STAGE: ASTEROID ────────────────────────────────────────────────────────
+function drawAsteroid(ctx: CanvasRenderingContext2D, size: number) {
+  const cx = size / 2, cy = size / 2;
+  const r = size * 0.34;
 
-    if (bandsMesh.current) {
-      bandsMesh.current.rotation.y = t * 0.08;
-    }
+  ctx.clearRect(0, 0, size, size);
 
-    if (meshMaterial.current) {
-      if (meshMaterial.current.distort !== undefined) {
-        meshMaterial.current.distort = (stage === PlanetStage.MAGMA ? 0.4 : 0.1) + pulseEase * 0.4 + normalizedIntensity * 0.1;
-      }
-      if (meshMaterial.current.emissiveIntensity !== undefined) {
-        // Lava flow simulation via emissive intensity pulsing
-        const lavaPulse = stage === PlanetStage.MAGMA ? 0.8 + Math.sin(t * 3) * 0.4 : 0;
-        meshMaterial.current.emissiveIntensity = lavaPulse + pulseEase * 2 + normalizedIntensity * 0.5;
-      }
-    }
+  const pts: { x: number; y: number }[] = [];
+  const numPts = 14;
+  for (let i = 0; i < numPts; i++) {
+    const angle = (i / numPts) * Math.PI * 2;
+    const noise = seededRand(i * 7.3) * r * 0.38 - r * 0.19;
+    const dist = r + noise;
+    pts.push({ x: cx + Math.cos(angle) * dist, y: cy + Math.sin(angle) * dist });
+  }
 
-    if (cloudsMaterial.current && cloudsMaterial.current.distort !== undefined) {
-      cloudsMaterial.current.distort = 0.3 + pulseEase * 0.5 + Math.sin(t * 0.2) * 0.1;
-    }
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+
+  const grad = ctx.createRadialGradient(cx - r * 0.28, cy - r * 0.32, r * 0.08, cx, cy, r * 1.1);
+  grad.addColorStop(0, '#8A9BB0');
+  grad.addColorStop(0.5, '#5C6B8A');
+  grad.addColorStop(1, '#232830');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Craters
+  const craters = [
+    { x: cx * 0.75, y: cy * 0.8, r: r * 0.18 },
+    { x: cx * 1.2, y: cy * 0.63, r: r * 0.13 },
+    { x: cx * 0.92, y: cy * 1.2, r: r * 0.16 },
+    { x: cx * 0.63, y: cy * 1.13, r: r * 0.1 },
+  ];
+  craters.forEach(c => {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+    ctx.clip();
+    const cg = ctx.createRadialGradient(c.x - c.r * 0.2, c.y - c.r * 0.2, 0, c.x, c.y, c.r);
+    cg.addColorStop(0, 'rgba(0,0,0,0.55)');
+    cg.addColorStop(0.7, 'rgba(60,72,90,0.25)');
+    cg.addColorStop(1, 'rgba(120,135,155,0.1)');
+    ctx.fillStyle = cg;
+    ctx.fillRect(c.x - c.r - 1, c.y - c.r - 1, (c.r + 1) * 2, (c.r + 1) * 2);
+    ctx.restore();
   });
 
-  const isBandedEmotion = ['sad', 'sedih', 'love', 'cinta', 'surprised', 'terkejut', 'happy', 'bahagia'].includes(emotion?.toLowerCase() || '');
+  // Cracks
+  ctx.strokeStyle = 'rgba(15,20,28,0.55)';
+  ctx.lineWidth = 0.8;
+  const cracks: number[][] = [
+    [cx * 0.7, cy * 0.92, cx * 0.97, cy * 0.75, cx * 1.03, cy * 0.8],
+    [cx * 1.08, cy * 1.0, cx * 1.25, cy * 1.2],
+    [cx * 0.83, cy * 0.63, cx * 0.75, cy * 0.87],
+  ];
+  cracks.forEach(pts2 => {
+    ctx.beginPath();
+    ctx.moveTo(pts2[0], pts2[1]);
+    for (let i = 2; i < pts2.length; i += 2) ctx.lineTo(pts2[i], pts2[i + 1]);
+    ctx.stroke();
+  });
+
+  // Highlight
+  const hl = ctx.createRadialGradient(cx - r * 0.22, cy - r * 0.26, 0, cx - r * 0.1, cy - r * 0.14, r * 0.42);
+  hl.addColorStop(0, 'rgba(255,255,255,0.28)');
+  hl.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = hl;
+  ctx.beginPath();
+  ctx.arc(cx - r * 0.1, cy - r * 0.14, r * 0.42, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ─── STAGE: MAGMA ────────────────────────────────────────────────────────────
+function drawMagma(ctx: CanvasRenderingContext2D, size: number, t: number, emotion?: string) {
+  const ec = getEmotionColor(emotion);
+  const cx = size / 2, cy = size / 2;
+  const r = size * 0.37;
+  const { r: gr, g: gg, b: gb } = hexToRgb(ec.glow);
+
+  ctx.clearRect(0, 0, size, size);
+
+  // Outer glow pulse
+  const pulse = 0.65 + 0.35 * Math.sin(t * 0.04);
+  const glow = ctx.createRadialGradient(cx, cy, r * 0.55, cx, cy, r * 1.55 * pulse);
+  glow.addColorStop(0, `rgba(${gr},${gg},${gb},0.22)`);
+  glow.addColorStop(0.6, `rgba(${gr},${gg},${gb},0.08)`);
+  glow.addColorStop(1, 'transparent');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 1.6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Rocky body - irregular
+  const pts: { x: number; y: number }[] = [];
+  for (let i = 0; i < 16; i++) {
+    const angle = (i / 16) * Math.PI * 2;
+    const noise = seededRand(i * 5.1) * r * 0.3 - r * 0.15;
+    const anim = Math.sin(t * 0.025 + i * 0.7) * 1.2;
+    pts.push({
+      x: cx + Math.cos(angle) * (r + noise + anim),
+      y: cy + Math.sin(angle) * (r + noise + anim),
+    });
+  }
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+
+  const rockGrad = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.05, cx, cy, r * 1.1);
+  rockGrad.addColorStop(0, '#4A4A58');
+  rockGrad.addColorStop(0.55, '#2E2E3A');
+  rockGrad.addColorStop(1, '#14141A');
+  ctx.fillStyle = rockGrad;
+  ctx.fill();
+  ctx.clip();
+
+  // Lava cracks
+  const crackPaths: number[][][] = [
+    [[cx * 0.7, cy * 1.17], [cx * 0.83, cy * 0.92], [cx * 1.03, cy * 0.8]],
+    [[cx * 1.17, cy * 1.0], [cx * 1.03, cy * 1.2], [cx * 0.92, cy * 1.33]],
+    [[cx * 0.8, cy * 0.7], [cx * 0.97, cy * 0.83], [cx * 1.17, cy * 0.73]],
+    [[cx * 0.58, cy * 0.92], [cx * 0.75, cy * 1.03]],
+  ];
+  const { r: mr, g: mg, b: mb } = hexToRgb(ec.main);
+  crackPaths.forEach((path, pi) => {
+    const glowPulse = 0.5 + 0.5 * Math.sin(t * 0.05 + pi * 1.3);
+    ctx.beginPath();
+    ctx.moveTo(path[0][0], path[0][1]);
+    for (let i = 1; i < path.length; i++) ctx.lineTo(path[i][0], path[i][1]);
+    ctx.strokeStyle = ec.main;
+    ctx.lineWidth = 1.5 * (1 + glowPulse * 0.8);
+    ctx.shadowColor = ec.glow;
+    ctx.shadowBlur = 8 * glowPulse;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  });
+
+  // Lava pools
+  const pools = [[cx * 0.92, cy * 1.08, r * 0.18], [cx * 1.17, cy * 0.87, r * 0.12], [cx * 0.7, cy * 0.97, r * 0.14]];
+  pools.forEach(([px, py, pr], i) => {
+    const lp = ctx.createRadialGradient(px, py, 0, px, py, pr);
+    const a = 0.55 + 0.45 * Math.sin(t * 0.03 + i * 1.1);
+    lp.addColorStop(0, ec.glow);
+    lp.addColorStop(0.5, `rgba(${mr},${mg},${mb},${a.toFixed(2)})`);
+    lp.addColorStop(1, 'transparent');
+    ctx.fillStyle = lp;
+    ctx.beginPath();
+    ctx.arc(px, py, pr, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.restore();
+
+  // Highlight
+  const hl = ctx.createRadialGradient(cx - r * 0.24, cy - r * 0.28, 0, cx - r * 0.12, cy - r * 0.16, r * 0.38);
+  hl.addColorStop(0, 'rgba(255,255,255,0.22)');
+  hl.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = hl;
+  ctx.beginPath();
+  ctx.arc(cx - r * 0.12, cy - r * 0.16, r * 0.38, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ─── STAGE: OCEAN ─────────────────────────────────────────────────────────────
+function drawOcean(ctx: CanvasRenderingContext2D, size: number, t: number, emotion?: string) {
+  const ec = getEmotionColor(emotion);
+  const cx = size / 2, cy = size / 2;
+  const r = size * 0.34;
+  const { r: gr, g: gg, b: gb } = hexToRgb(ec.glow);
+  const { r: mr, g: mg, b: mb } = hexToRgb(ec.main);
+
+  ctx.clearRect(0, 0, size, size);
+
+  // Atmospheric rings (AR style) — drawn BEHIND planet
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  const ringAngle = t * 0.012;
+
+  // Ring 1
+  ctx.save();
+  ctx.rotate(ringAngle);
+  ctx.scale(1, 0.26);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 1.6, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(${gr},${gg},${gb},0.55)`;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  // Satellite dot
+  const d1x = Math.cos(ringAngle * 1.8) * r * 1.6;
+  const d1y = Math.sin(ringAngle * 1.8) * r * 1.6;
+  ctx.fillStyle = ec.glow;
+  ctx.beginPath();
+  ctx.arc(d1x, d1y, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Ring 2 — dashed
+  ctx.save();
+  ctx.rotate(-ringAngle * 0.65 + 1.0);
+  ctx.scale(0.3, 1);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 1.5, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(${mr},${mg},${mb},0.4)`;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([5, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // Satellite dot 2
+  const d2x = Math.cos(-ringAngle * 0.65 * 2.2) * r * 1.5;
+  const d2y = Math.sin(-ringAngle * 0.65 * 2.2) * r * 1.5;
+  ctx.fillStyle = `rgba(${mr},${mg},${mb},0.8)`;
+  ctx.beginPath();
+  ctx.arc(d2x, d2y, 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.restore();
+
+  // Outer atmosphere halo
+  const atmoGlow = ctx.createRadialGradient(cx, cy, r * 0.88, cx, cy, r * 1.28);
+  atmoGlow.addColorStop(0, `rgba(${gr},${gg},${gb},0.18)`);
+  atmoGlow.addColorStop(0.5, `rgba(${gr},${gg},${gb},0.07)`);
+  atmoGlow.addColorStop(1, 'transparent');
+  ctx.fillStyle = atmoGlow;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 1.28, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Planet body clip
+  ctx.save();
+  const pts: { x: number; y: number }[] = [];
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2;
+    const noise = seededRand(i * 3.7) * r * 0.22 - r * 0.11;
+    pts.push({ x: cx + Math.cos(angle) * (r + noise), y: cy + Math.sin(angle) * (r + noise) });
+  }
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+  ctx.clip();
+
+  // Ocean base
+  const oceanGrad = ctx.createRadialGradient(cx - r * 0.22, cy - r * 0.26, r * 0.05, cx, cy, r * 1.1);
+  oceanGrad.addColorStop(0, '#4B7EC5');
+  oceanGrad.addColorStop(0.5, '#2B5EA7');
+  oceanGrad.addColorStop(1, '#122855');
+  ctx.fillStyle = oceanGrad;
+  ctx.fillRect(0, 0, size, size);
+
+  // Wave shimmer
+  const waveY = cy + Math.sin(t * 0.02) * 3;
+  for (let wi = 0; wi < 3; wi++) {
+    ctx.beginPath();
+    ctx.moveTo(cx - r, waveY + wi * 10 - 10);
+    for (let wx = -r; wx <= r; wx += 4) {
+      ctx.lineTo(cx + wx, waveY + wi * 10 - 10 + Math.sin((wx + t * 0.6 + wi * 20) * 0.18) * 3);
+    }
+    ctx.strokeStyle = `rgba(180,215,255,0.12)`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Landmasses
+  const lands = [
+    { x: cx - r * 0.22, y: cy - r * 0.18, rx: r * 0.5, ry: r * 0.3, rot: 0.3 },
+    { x: cx + r * 0.28, y: cy + r * 0.22, rx: r * 0.32, ry: r * 0.22, rot: -0.2 },
+  ];
+  lands.forEach(l => {
+    ctx.save();
+    ctx.translate(l.x, l.y);
+    ctx.rotate(l.rot);
+    ctx.fillStyle = '#2D6B3A';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, l.rx, l.ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#3A8048';
+    ctx.beginPath();
+    ctx.ellipse(-l.rx * 0.1, -l.ry * 0.15, l.rx * 0.55, l.ry * 0.55, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+
+  // Emotion color tint
+  ctx.fillStyle = `rgba(${mr},${mg},${mb},0.14)`;
+  ctx.fillRect(0, 0, size, size);
+
+  ctx.restore();
+
+  // Highlight
+  const hl = ctx.createRadialGradient(cx - r * 0.22, cy - r * 0.26, 0, cx - r * 0.1, cy - r * 0.13, r * 0.4);
+  hl.addColorStop(0, 'rgba(255,255,255,0.28)');
+  hl.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = hl;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 1.05, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.beginPath();
+  ctx.arc(cx - r * 0.1, cy - r * 0.13, r * 0.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ─── STAGE: LIVING ────────────────────────────────────────────────────────────
+function drawLiving(ctx: CanvasRenderingContext2D, size: number, t: number, emotion?: string) {
+  const ec = getEmotionColor(emotion);
+  const cx = size / 2, cy = size / 2;
+  const r = size * 0.38;
+  const { r: gr, g: gg, b: gb } = hexToRgb(ec.glow);
+  const { r: mr, g: mg, b: mb } = hexToRgb(ec.main);
+
+  ctx.clearRect(0, 0, size, size);
+
+  // Aura glow
+  const auraPulse = 0.72 + 0.28 * Math.sin(t * 0.022);
+  const aura = ctx.createRadialGradient(cx, cy, r * 0.75, cx, cy, r * 1.65 * auraPulse);
+  aura.addColorStop(0, `rgba(${gr},${gg},${gb},0.38)`);
+  aura.addColorStop(0.45, `rgba(${mr},${mg},${mb},0.14)`);
+  aura.addColorStop(1, 'transparent');
+  ctx.fillStyle = aura;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 1.7, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Planet body — perfect circle
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.clip();
+
+  // Base gradient from emotion
+  const baseGrad = ctx.createRadialGradient(cx - r * 0.32, cy - r * 0.36, r * 0.06, cx, cy, r * 1.15);
+  baseGrad.addColorStop(0, ec.glow);
+  baseGrad.addColorStop(0.45, ec.main);
+  baseGrad.addColorStop(1, ec.alt);
+  ctx.fillStyle = baseGrad;
+  ctx.fillRect(0, 0, size, size);
+
+  // Cloud bands that drift
+  [0, 1, 2].forEach(i => {
+    const drift = Math.sin(t * 0.006 * (i % 2 === 0 ? 1 : -1) + i * 2.1) * r * 0.12;
+    const by = cy - r * 0.3 + i * r * 0.3;
+    ctx.fillStyle = `rgba(255,255,255,0.08)`;
+    ctx.beginPath();
+    ctx.ellipse(cx + drift, by, r * 0.75, r * 0.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Shimmer/sparkle clusters
+  [[0.67, 0.75], [1.2, 0.87], [0.92, 1.17], [0.58, 1.08]].forEach(([fx, fy], i) => {
+    const sp = 0.25 + 0.75 * Math.abs(Math.sin(t * 0.022 + i * 1.57));
+    const sx = cx * fx, sy = cy * fy;
+    ctx.fillStyle = `rgba(255,255,255,${(sp * 0.18).toFixed(2)})`;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r * (0.1 + sp * 0.1), 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Shadow side
+  const shadow = ctx.createRadialGradient(cx + r * 0.52, cy + r * 0.42, 0, cx + r * 0.36, cy + r * 0.28, r * 1.05);
+  shadow.addColorStop(0, 'rgba(0,0,0,0.5)');
+  shadow.addColorStop(0.45, 'rgba(0,0,0,0.18)');
+  shadow.addColorStop(1, 'transparent');
+  ctx.fillStyle = shadow;
+  ctx.fillRect(0, 0, size, size);
+
+  ctx.restore();
+
+  // Specular highlight
+  const hl = ctx.createRadialGradient(cx - r * 0.24, cy - r * 0.28, 0, cx - r * 0.14, cy - r * 0.17, r * 0.44);
+  hl.addColorStop(0, 'rgba(255,255,255,0.45)');
+  hl.addColorStop(0.4, 'rgba(255,255,255,0.12)');
+  hl.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = hl;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.beginPath();
+  ctx.arc(cx - r * 0.14, cy - r * 0.17, r * 0.44, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ─── STAGE: EMPTY ─────────────────────────────────────────────────────────────
+function drawEmpty(ctx: CanvasRenderingContext2D, size: number, t: number) {
+  ctx.clearRect(0, 0, size, size);
+  const cx = size / 2, cy = size / 2;
+  const pulse = 0.4 + 0.6 * Math.abs(Math.sin(t * 0.018));
+  const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, size * 0.3);
+  grd.addColorStop(0, `rgba(80,140,255,${(pulse * 0.18).toFixed(2)})`);
+  grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(cx, cy, size * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ─── STAGE: ASCENDED (same as LIVING but brighter aura) ───────────────────────
+function drawAscended(ctx: CanvasRenderingContext2D, size: number, t: number, emotion?: string) {
+  drawLiving(ctx, size, t, emotion);
+  const ec = getEmotionColor(emotion);
+  const cx = size / 2, cy = size / 2;
+  const { r: gr, g: gg, b: gb } = hexToRgb(ec.glow);
+  const pulse = 0.5 + 0.5 * Math.sin(t * 0.03);
+  const ring = ctx.createRadialGradient(cx, cy, (size * 0.38) * 0.9, cx, cy, size * 0.38 * 1.12);
+  ring.addColorStop(0, `rgba(${gr},${gg},${gb},${(0.5 * pulse).toFixed(2)})`);
+  ring.addColorStop(1, 'transparent');
+  ctx.fillStyle = ring;
+  ctx.beginPath();
+  ctx.arc(cx, cy, size * 0.38 * 1.15, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ─── CANVAS PLANET COMPONENT ──────────────────────────────────────────────────
+const PlanetCanvas: React.FC<{ stage: PlanetStage; emotion?: string }> = ({ stage, emotion }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const frameRef = useRef<number>(0);
+  const tRef = useRef<number>(0);
+
+  // Size per stage
+  const sizes: Record<PlanetStage, number> = {
+    [PlanetStage.EMPTY]:    160,
+    [PlanetStage.ASTEROID]: 200,
+    [PlanetStage.MAGMA]:    240,
+    [PlanetStage.OCEAN]:    280,
+    [PlanetStage.LIVING]:   310,
+    [PlanetStage.ASCENDED]: 310,
+  };
+  const size = sizes[stage] ?? 200;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const draw = () => {
+      tRef.current++;
+      const t = tRef.current;
+      switch (stage) {
+        case PlanetStage.EMPTY:    drawEmpty(ctx, size, t);                   break;
+        case PlanetStage.ASTEROID: drawAsteroid(ctx, size);                    break;
+        case PlanetStage.MAGMA:    drawMagma(ctx, size, t, emotion);           break;
+        case PlanetStage.OCEAN:    drawOcean(ctx, size, t, emotion);           break;
+        case PlanetStage.LIVING:   drawLiving(ctx, size, t, emotion);          break;
+        case PlanetStage.ASCENDED: drawAscended(ctx, size, t, emotion);        break;
+      }
+      frameRef.current = requestAnimationFrame(draw);
+    };
+
+    frameRef.current = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(frameRef.current);
+  }, [stage, emotion, size]);
 
   return (
-    <Float speed={1.5} rotationIntensity={0.2} floatIntensity={0.3}>
-      <group>
-        {/* Atmosphere/Glow Layer */}
-        <mesh ref={glowMesh} scale={1.2}>
-          <sphereGeometry args={[2.2, 32, 32]} />
-          <meshBasicMaterial 
-            color={colors.glow} 
-            transparent 
-            opacity={0.08} 
-            side={THREE.BackSide} 
-          />
-        </mesh>
-
-        {/* Main Body */}
-        <mesh ref={mesh}>
-          <sphereGeometry args={[2.2, 64, 64]} />
-          {stage === PlanetStage.ASTEROID ? (
-             <meshStandardMaterial 
-              ref={meshMaterial}
-              color={colors.main}
-              roughness={1}
-              metalness={0.2}
-              flatShading
-            />
-          ) : (
-            <MeshDistortMaterial
-              ref={meshMaterial}
-              color={colors.main}
-              speed={stage === PlanetStage.MAGMA ? 3 : 1.2}
-              distort={stage === PlanetStage.MAGMA ? 0.4 : 0.1}
-              radius={1}
-              roughness={0.6}
-              metalness={0.1}
-              emissive={stage === PlanetStage.MAGMA ? colors.accent : "#000000"}
-              emissiveIntensity={stage === PlanetStage.MAGMA ? 0.8 : 0}
-            />
-          )}
-        </mesh>
-
-        {/* Bands/Stripes Layer - For "Love", "Surprised", "Sad", "Happy" */}
-        {isBandedEmotion && (
-          <mesh ref={bandsMesh} scale={1.01}>
-            <sphereGeometry args={[2.22, 64, 32]} />
-            <meshStandardMaterial 
-              color={colors.bands} 
-              transparent 
-              opacity={0.4} 
-              wireframe 
-              wireframeLinewidth={2}
-            />
-          </mesh>
-        )}
-
-        {/* Terrain Layer - Craters/Details */}
-        {(stage === PlanetStage.ASTEROID || stage === PlanetStage.LIVING || stage === PlanetStage.ASCENDED) && (
-          <mesh ref={terrainMesh} scale={1.03}>
-            <sphereGeometry args={[2.2, 48, 48]} />
-            <meshStandardMaterial 
-              color={colors.accent} 
-              transparent 
-              opacity={stage === PlanetStage.ASTEROID ? 0.8 : 0.4} 
-              wireframe={stage === PlanetStage.ASTEROID}
-              roughness={1}
-              metalness={0}
-            />
-          </mesh>
-        )}
-
-        {/* Lava Flow Layer (Magma Stage Only) */}
-        {stage === PlanetStage.MAGMA && (
-          <mesh ref={lavaMesh} scale={1.01}>
-            <sphereGeometry args={[2.21, 64, 64]} />
-            <meshStandardMaterial 
-              color={colors.accent} 
-              emissive={colors.accent}
-              emissiveIntensity={1.5}
-              transparent
-              opacity={0.6}
-              wireframe
-            />
-          </mesh>
-        )}
-
-        {/* Topographical Features (Mountains & Craters) */}
-        {(stage === PlanetStage.LIVING || stage === PlanetStage.ASCENDED || stage === PlanetStage.ASTEROID) && (
-          <group>
-            {features.map((feature, i) => (
-              <mesh 
-                key={i} 
-                position={feature.position} 
-                scale={feature.scale}
-                rotation={feature.rotation}
-              >
-                {feature.type === 'mountain' ? (
-                  <coneGeometry args={[1, 1.5, 8]} />
-                ) : (
-                  <sphereGeometry args={[1, 16, 16]} />
-                )}
-                <meshStandardMaterial 
-                  color={colors.accent} 
-                  transparent 
-                  opacity={stage === PlanetStage.ASTEROID ? 0.9 : 0.5} 
-                  roughness={1}
-                />
-              </mesh>
-            ))}
-          </group>
-        )}
-
-        {/* Atmospheric/Cloud Layer - Selective based on emotion/stage */}
-        {(stage === PlanetStage.LIVING || stage === PlanetStage.ASCENDED || stage === PlanetStage.MAGMA) && (
-          <mesh ref={cloudsMesh} scale={1.08}>
-            <sphereGeometry args={[2.2, 64, 64]} />
-            <MeshDistortMaterial
-              ref={cloudsMaterial}
-              color={colors.atmospheric}
-              transparent
-              opacity={stage === PlanetStage.MAGMA ? 0.15 : 0.3}
-              speed={stage === PlanetStage.MAGMA ? 5 : 1.5}
-              distort={0.3}
-              radius={1}
-              roughness={0.1}
-              metalness={0}
-            />
-          </mesh>
-        )}
-      </group>
-    </Float>
+    <canvas
+      ref={canvasRef}
+      width={size}
+      height={size}
+      style={{ display: 'block' }}
+    />
   );
 };
 
-const Sparkle: React.FC<{ delay: number; x: string; y: string }> = ({ delay, x, y }) => (
-  <motion.div
-    initial={{ scale: 0, opacity: 0 }}
-    animate={{ 
-      scale: [0, 1, 0],
-      opacity: [0, 1, 0],
-    }}
-    transition={{
-      duration: 2,
-      repeat: Infinity,
-      delay: delay,
-      ease: "easeInOut"
-    }}
-    className="absolute w-1.5 h-1.5 bg-white rounded-full blur-[1px]"
-    style={{ left: x, top: y }}
-  />
-);
-
-const Cloud: React.FC<{ delay: number; x: string; y: string; color?: string }> = ({ delay, x, y, color = "bg-white/30" }) => (
-  <motion.div
-    animate={{ x: [0, 20, 0] }}
-    transition={{ duration: 15, repeat: Infinity, delay }}
-    className={`absolute ${color} rounded-full blur-md h-4 w-12`}
-    style={{ left: x, top: y }}
-  />
-);
-
-const EmotionWeather: React.FC<{ emotion: string }> = ({ emotion }) => {
-  const e = emotion.toLowerCase();
-  
-  if (e.includes('happy') || e.includes('bahagia') || e.includes('senang') || e.includes('excited') || e.includes('semangat')) {
-    return (
-      <div className="absolute inset-0 pointer-events-none">
-        <Sparkle delay={0} x="20%" y="30%" />
-        <Sparkle delay={0.5} x="70%" y="20%" />
-        <Sparkle delay={1.2} x="40%" y="60%" />
-        <Sparkle delay={1.8} x="80%" y="70%" />
-        <Sparkle delay={2.5} x="10%" y="80%" />
-        {e.includes('excited') && (
-          <motion.div 
-            animate={{ opacity: [0, 0.4, 0], scale: [0.8, 1.2, 0.8] }}
-            transition={{ duration: 3, repeat: Infinity }}
-            className="absolute inset-0 bg-yellow-400/10 blur-3xl"
-          />
-        )}
-      </div>
-    );
-  }
-
-  if (e.includes('sad') || e.includes('sedih') || e.includes('kesepian')) {
-    return (
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute inset-0 bg-blue-900/20 backdrop-blur-[1px]" />
-        {[...Array(8)].map((_, i) => (
-          <motion.div
-            key={i}
-            animate={{ y: [0, 100] }}
-            transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.2, ease: "linear" }}
-            className="absolute w-[1px] h-8 bg-blue-300/40"
-            style={{ left: `${10 + i * 12}%`, top: '-30px' }}
-          />
-        ))}
-      </div>
-    );
-  }
-
-  if (e.includes('angry') || e.includes('marah') || e.includes('kesal')) {
-    return (
-      <div className="absolute inset-0 pointer-events-none">
-        <motion.div 
-          animate={{ opacity: [0.1, 0.5, 0.1] }}
-          transition={{ duration: 2, repeat: Infinity }}
-          className="absolute inset-0 bg-red-600/30"
-        />
-        <div className="absolute inset-0 mix-blend-overlay opacity-50">
-          <svg className="w-full h-full" viewBox="0 0 100 100">
-            <path d="M10,20 Q30,50 10,80 M60,10 Q80,40 50,70" fill="none" stroke="#FF4D4D" strokeWidth="3" strokeDasharray="5 5" />
-          </svg>
-        </div>
-      </div>
-    );
-  }
-
-  if (e.includes('love') || e.includes('cinta') || e.includes('sayang') || e.includes('affection')) {
-    return (
-      <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-        <motion.div
-          animate={{ scale: [1, 1.2, 1], opacity: [0.1, 0.2, 0.1] }}
-          transition={{ duration: 4, repeat: Infinity }}
-          className="w-full h-full bg-pink-400/20 rounded-full blur-2xl"
-        />
-        {[...Array(5)].map((_, i) => (
-          <motion.div
-            key={i}
-            initial={{ y: 30, opacity: 0 }}
-            animate={{ y: -60, opacity: [0, 1, 0] }}
-            transition={{ duration: 5, repeat: Infinity, delay: i * 1 }}
-            className="absolute text-pink-400/60 text-sm"
-            style={{ left: `${20 + i * 15}%` }}
-          >
-            ♥
-          </motion.div>
-        ))}
-      </div>
-    );
-  }
-
-  if (e.includes('fear') || e.includes('takut') || e.includes('anxious') || e.includes('khawatir')) {
-    return (
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <motion.div 
-          animate={{ opacity: [0, 0.3, 0] }}
-          transition={{ duration: 0.1, repeat: Infinity, repeatDelay: Math.random() * 4 }}
-          className="absolute inset-0 bg-white"
-        />
-        <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-[3px]" />
-      </div>
-    );
-  }
-
-  if (e.includes('calm') || e.includes('tenang') || e.includes('peaceful') || e.includes('damai')) {
-    return (
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <motion.div
-          animate={{ 
-            background: [
-              "radial-gradient(circle at 50% 50%, rgba(52, 211, 153, 0.1) 0%, transparent 70%)",
-              "radial-gradient(circle at 60% 40%, rgba(52, 211, 153, 0.2) 0%, transparent 70%)",
-              "radial-gradient(circle at 50% 50%, rgba(52, 211, 153, 0.1) 0%, transparent 70%)",
-            ]
-          }}
-          transition={{ duration: 8, repeat: Infinity }}
-          className="absolute inset-0"
-        />
-      </div>
-    );
-  }
-
-  if (e.includes('grateful') || e.includes('bersyukur') || e.includes('touched') || e.includes('tersentuh')) {
-    return (
-      <div className="absolute inset-0 pointer-events-none">
-        <motion.div 
-          animate={{ opacity: [0.1, 0.3, 0.1] }}
-          transition={{ duration: 6, repeat: Infinity }}
-          className="absolute inset-0 bg-cyan-400/10 blur-3xl"
-        />
-      </div>
-    );
-  }
-
-  return null;
+// ─── STAGE LABELS ─────────────────────────────────────────────────────────────
+const STAGE_LABELS: Record<PlanetStage, string> = {
+  [PlanetStage.EMPTY]:    'Void',
+  [PlanetStage.ASTEROID]: 'Stellar Seed',
+  [PlanetStage.MAGMA]:    'Igneous Core',
+  [PlanetStage.OCEAN]:    'Oceanic World',
+  [PlanetStage.LIVING]:   'Biosphere',
+  [PlanetStage.ASCENDED]: 'Ascended',
 };
 
-const PlanetFace: React.FC<{ emotion?: string; color?: string }> = ({ emotion, color = "rgba(0,0,0,0.5)" }) => {
-  const e = emotion?.toLowerCase() || 'neutral';
-  
-  const renderFace = () => {
-    // Excited / Very Happy
-    if (e.includes('excited') || e.includes('semangat') || e.includes('senang sekali')) {
-      return (
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-          <div className="flex gap-12 mb-2">
-            <motion.div animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 1, repeat: Infinity }} className="text-3xl font-black" style={{ color }}>O</motion.div>
-            <motion.div animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 1, repeat: Infinity, delay: 0.1 }} className="text-3xl font-black" style={{ color }}>O</motion.div>
-          </div>
-          <motion.div 
-            animate={{ width: [40, 60, 40], height: [20, 30, 20] }} 
-            transition={{ duration: 0.8, repeat: Infinity }}
-            className="border-b-[5px] rounded-full" style={{ borderColor: color, width: 40, height: 20 }} 
-          />
-        </div>
-      );
-    }
-    
-    if (e.includes('happy') || e.includes('bahagia') || e.includes('senang')) {
-      return (
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-          <div className="flex gap-10 mb-2">
-            <motion.div 
-              animate={{ 
-                scaleY: [1, 0.4, 1, 1], // Blink
-                scaleX: [1, 1.2, 1, 1], // Widen
-                y: [0, -1, 0]
-              }} 
-              transition={{ 
-                duration: 4, 
-                repeat: Infinity, 
-                times: [0, 0.05, 0.1, 1],
-                delay: Math.random() 
-              }} 
-              className="text-2xl font-black" 
-              style={{ color }}
-            >
-              ^
-            </motion.div>
-            <motion.div 
-              animate={{ 
-                scaleY: [1, 0.4, 1, 1], 
-                scaleX: [1, 1.2, 1, 1],
-                y: [0, -1, 0]
-              }} 
-              transition={{ 
-                duration: 4, 
-                repeat: Infinity, 
-                times: [0, 0.05, 0.1, 1], 
-                delay: 0.1 + Math.random() 
-              }} 
-              className="text-2xl font-black" 
-              style={{ color }}
-            >
-              ^
-            </motion.div>
-          </div>
-          <motion.div 
-            animate={{ 
-              scaleX: [1, 1.1, 1],
-              scaleY: [1, 1.05, 1],
-              y: [0, 2, 0]
-            }}
-            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-            className="w-16 h-8 border-b-[4px] rounded-full" 
-            style={{ borderColor: color }} 
-          />
-        </div>
-      );
-    }
-    
-    if (e.includes('sad') || e.includes('sedih') || e.includes('lonely') || e.includes('kesepian')) {
-      return (
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-          <div className="flex gap-8 mb-4">
-            <motion.div 
-              animate={{ 
-                rotate: [15, 12, 18, 15],
-                y: [0, 0.5, -0.5, 0]
-              }}
-              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-              className="w-5 h-2 rounded-full opacity-80" 
-              style={{ backgroundColor: color }} 
-            />
-            <motion.div 
-              animate={{ 
-                rotate: [-15, -12, -18, -15],
-                y: [0, 0.5, -0.5, 0]
-              }}
-              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
-              className="w-5 h-2 rounded-full opacity-80" 
-              style={{ backgroundColor: color }} 
-            />
-          </div>
-          <motion.div 
-            animate={{ 
-              y: [0, 4, 0],
-              scaleX: [1, 0.9, 1.1, 1],
-              height: [24, 28, 24]
-            }}
-            transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-            className="w-12 h-6 border-t-[4px] rounded-full mt-2 opacity-80" 
-            style={{ borderColor: color }} 
-          />
-          <motion.div 
-            animate={{ 
-              y: [0, 40], 
-              opacity: [0, 0.8, 0],
-              scale: [0.5, 1.2, 0.5],
-              x: [-2, 2, -1, 1, 0]
-            }}
-            transition={{ duration: 3, repeat: Infinity, ease: "easeIn" }}
-            className="w-1.5 h-1.5 bg-blue-400 absolute mt-14 mr-10 rounded-full blur-[0.5px]"
-          />
-        </div>
-      );
-    }
-    
-    if (e.includes('love') || e.includes('cinta') || e.includes('sayang')) {
-      return (
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-          <div className="flex gap-10 mb-2">
-            <motion.div 
-              animate={{ 
-                scale: [1, 1.3, 1],
-                rotate: [0, 5, -5, 0]
-              }} 
-              transition={{ duration: 1, repeat: Infinity, ease: "easeInOut" }} 
-              className="text-3xl" style={{ color: '#ec4899' }}
-            >
-              ♥
-            </motion.div>
-            <motion.div 
-              animate={{ 
-                scale: [1, 1.3, 1],
-                rotate: [0, -5, 5, 0]
-              }} 
-              transition={{ duration: 1, repeat: Infinity, ease: "easeInOut", delay: 0.2 }} 
-              className="text-3xl" style={{ color: '#ec4899' }}
-            >
-              ♥
-            </motion.div>
-          </div>
-          <motion.div 
-            animate={{ scaleX: [1, 1.1, 1] }}
-            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-            className="w-14 h-7 border-b-[4px] rounded-full" 
-            style={{ borderColor: color }} 
-          />
-        </div>
-      );
-    }
-    
-    if (e.includes('angry') || e.includes('marah') || e.includes('kesal')) {
-      return (
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-          <div className="flex gap-8 mb-2">
-            <motion.div 
-              animate={{ rotate: [30, 35, 30], y: [0, -1, 0] }}
-              transition={{ duration: 0.1, repeat: Infinity, repeatDelay: 1 }}
-              className="w-7 h-2 rounded-full" 
-              style={{ backgroundColor: color }} 
-            />
-            <motion.div 
-              animate={{ rotate: [-30, -35, -30], y: [0, -1, 0] }}
-              transition={{ duration: 0.1, repeat: Infinity, repeatDelay: 1 }}
-              className="w-7 h-2 rounded-full" 
-              style={{ backgroundColor: color }} 
-            />
-          </div>
-          <motion.div 
-            animate={{ scale: [1, 1.05, 1], x: [-0.3, 0.3, -0.3] }}
-            transition={{ duration: 0.2, repeat: Infinity }}
-            className="w-14 h-4 rounded-full mt-4" style={{ backgroundColor: color }} 
-          />
-        </div>
-      );
-    }
-    
-    if (e.includes('calm') || e.includes('tenang') || e.includes('damai')) {
-      return (
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-          <div className="flex gap-12 mb-6">
-            <motion.div 
-              animate={{ width: [32, 28, 32] }}
-              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-              className="h-[2px] opacity-60" 
-              style={{ backgroundColor: color, width: 32 }} 
-            />
-            <motion.div 
-              animate={{ width: [32, 28, 32] }}
-              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-              className="h-[2px] opacity-60" 
-              style={{ backgroundColor: color, width: 32 }} 
-            />
-          </div>
-          <motion.div 
-            animate={{ opacity: [0.3, 0.5, 0.3] }}
-            transition={{ duration: 8, repeat: Infinity }}
-            className="w-12 h-[2px]" 
-            style={{ backgroundColor: color }} 
-          />
-        </div>
-      );
-    }
-    
-    if (e.includes('shocked') || e.includes('terkejut') || e.includes('kaget') || e.includes('surprised')) {
-      return (
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-          <div className="flex gap-10 mb-4">
-            <motion.div 
-              animate={{ scale: [1, 1.2, 1] }}
-              transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 2 }}
-              className="w-6 h-6 rounded-full border-[2px]" 
-              style={{ borderColor: color }} 
-            />
-            <motion.div 
-              animate={{ scale: [1, 1.2, 1] }}
-              transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 2 }}
-              className="w-6 h-6 rounded-full border-[2px]" 
-              style={{ borderColor: color }} 
-            />
-          </div>
-          <motion.div 
-            animate={{ scale: [1, 1.1, 1] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
-            className="w-10 h-10 border-[3px] rounded-full" 
-            style={{ borderColor: color }} 
-          />
-        </div>
-      );
-    }
-
-    if (e.includes('anxious') || e.includes('khawatir') || e.includes('takut') || e.includes('fear')) {
-      return (
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-          <motion.div 
-            animate={{ 
-              x: [-1, 1, -1, 1, 0],
-              y: [-0.5, 0.5, 0]
-            }} 
-            transition={{ duration: 0.2, repeat: Infinity, repeatDelay: 1 }} 
-            className="flex flex-col items-center"
-          >
-            <div className="flex gap-10 mb-4">
-              <motion.div 
-                animate={{ scaleY: [1, 1.2, 1] }}
-                transition={{ duration: 0.1, repeat: Infinity, repeatDelay: 2 }}
-                className="w-3 h-5 rounded-full" style={{ backgroundColor: color }} 
-              />
-              <motion.div 
-                animate={{ scaleY: [1, 1.2, 1] }}
-                transition={{ duration: 0.1, repeat: Infinity, repeatDelay: 2.1 }}
-                className="w-3 h-5 rounded-full" style={{ backgroundColor: color }} 
-              />
-            </div>
-            <motion.div 
-              animate={{ width: [48, 52, 48] }}
-              transition={{ duration: 0.5, repeat: Infinity }}
-              className="h-3 bg-white/20 border-t-[2px] border-black/40 rounded-sm" 
-              style={{ width: 48 }}
-            />
-          </motion.div>
-        </div>
-      );
-    }
-
-    if (e.includes('grateful') || e.includes('bersyukur') || e.includes('tersentuh') || e.includes('touched')) {
-      return (
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-          <div className="flex gap-10 mb-2">
-            <motion.div 
-              animate={{ scale: [1, 1.1, 1] }}
-              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-              className="w-4 h-4 rounded-full relative" 
-              style={{ backgroundColor: color }}
-            >
-              <div className="absolute inset-0 bg-white/30 rounded-full blur-[2px]" />
-            </motion.div>
-            <motion.div 
-              animate={{ scale: [1, 1.1, 1] }}
-              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
-              className="w-4 h-4 rounded-full relative" 
-              style={{ backgroundColor: color }}
-            >
-              <div className="absolute inset-0 bg-white/30 rounded-full blur-[2px]" />
-            </motion.div>
-          </div>
-          <motion.div 
-            animate={{ 
-              scaleX: [1, 1.05, 1],
-              y: [0, 1, 0]
-            }}
-            transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-            className="w-14 h-7 border-b-[3px] rounded-full" 
-            style={{ borderColor: color }} 
-          />
-        </div>
-      );
-    }
-
-    // Default / Neutral face (as requested, a moon face)
-    return (
-      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-        <div className="flex gap-12 mb-8">
-          <motion.div 
-            animate={{ scale: [1, 0.9, 1], opacity: [0.3, 0.4, 0.3] }}
-            transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
-            className="w-3 h-3 rounded-full shadow-[inset_1px_1px_2px_rgba(0,0,0,0.5)]" 
-            style={{ backgroundColor: color }} 
-          />
-          <motion.div 
-            animate={{ scale: [1, 0.9, 1], opacity: [0.3, 0.4, 0.3] }}
-            transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 2 }}
-            className="w-3 h-3 rounded-full shadow-[inset_1px_1px_2px_rgba(0,0,0,0.5)]" 
-            style={{ backgroundColor: color }} 
-          />
-        </div>
-        <motion.div 
-          animate={{ width: [56, 50, 56], opacity: [0.15, 0.25, 0.15] }}
-          transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
-          className="h-[2px]" 
-          style={{ backgroundColor: color, width: 56 }} 
-        />
-      </div>
-    );
-  };
-
-  return renderFace();
-};
-
+// ─── MAIN PLANET COMPONENT ────────────────────────────────────────────────────
 export const Planet: React.FC<PlanetProps> = ({ stage, emotion, intensity = 5 }) => {
-  const colors = useMemo(() => {
-    switch (stage) {
-      case PlanetStage.ASTEROID: return { main: "#5C6B8A", accent: "#3D4D6A", glow: "#7A8BAE", atmospheric: "#4A5568", bands: "#3D4D6A" };
-      case PlanetStage.MAGMA: return { main: "#1A1A1A", accent: "#FF4D4D", glow: "#FF6B35", atmospheric: "#FF4D4D", bands: "#FF6B35" };
-      case PlanetStage.OCEAN: return { main: "#1E3A8A", accent: "#3B82F6", glow: "#60A5FA", atmospheric: "#93C5FD", bands: "#3B82F6" };
-      case PlanetStage.LIVING:
-      case PlanetStage.ASCENDED:
-        const e = emotion?.toLowerCase() || 'neutral';
-        if (e.includes('happy') || e.includes('bahagia') || e.includes('senang') || e.includes('excited')) 
-          return { main: "#FDBA74", accent: "#F97316", glow: "#FCD34D", atmospheric: "#FEF08A", bands: "#FFF7ED", faceColor: "#F59E0B" };
-        if (e.includes('sad') || e.includes('sedih') || e.includes('lonely') || e.includes('melancholy') || e.includes('kesepian')) 
-          return { main: "#334155", accent: "#475569", glow: "#60A5FA", atmospheric: "#E2E8F0", bands: "#F8FAFC", faceColor: "#94A3B8" };
-        if (e.includes('love') || e.includes('cinta') || e.includes('affection') || e.includes('sayang')) 
-          return { main: "#FDA4AF", accent: "#E11D48", glow: "#F472B6", atmospheric: "#FFE4E6", bands: "#FFF1F2", faceColor: "#ec4899" };
-        if (e.includes('angry') || e.includes('marah') || e.includes('frustrated') || e.includes('kesal')) 
-          return { main: "#450A0A", accent: "#991B1B", glow: "#EF4444", atmospheric: "#EF4444", bands: "#F87171", faceColor: "#DC2626" };
-        if (e.includes('surprised') || e.includes('terkejut') || e.includes('shocked') || e.includes('kaget')) 
-          return { main: "#06B6D4", accent: "#0891B2", glow: "#C084FC", atmospheric: "#D1FAE5", bands: "#A21CAF", faceColor: "#8B5CF6" };
-        if (e.includes('fear') || e.includes('takut') || e.includes('scared') || e.includes('anxious') || e.includes('khawatir')) 
-          return { main: "#1E1B4B", accent: "#312E81", glow: "#4F46E5", atmospheric: "#C7D2FE", bands: "#0F172A", faceColor: "#6366F1" };
-        if (e.includes('touched') || e.includes('tersentuh') || e.includes('grateful') || e.includes('bersyukur')) 
-          return { main: "#AED9E0", accent: "#76B4BD", glow: "#2DD4BF", atmospheric: "#B2DFDB", bands: "#E0F2F1", faceColor: "#14B8A6" };
-        if (e.includes('disappointed') || e.includes('kecewa')) 
-          return { main: "#B8A8C8", accent: "#8B7BAE", glow: "#F3E5F5", atmospheric: "#E1BEE7", bands: "#F3E5F5", faceColor: "rgba(0,0,0,0.6)" };
-        if (e.includes('calm') || e.includes('tenang') || e.includes('peaceful') || e.includes('damai')) 
-          return { main: "#D1FAE5", accent: "#10B981", glow: "#34D399", atmospheric: "#A7F3D0", bands: "#D1FAE5", faceColor: "#10B981" };
-        
-        return { main: "#F0EDE8", accent: "#D9D5CF", glow: "#ffffff", atmospheric: "#F3F4F6", bands: "#F8FAFC", faceColor: "rgba(0,0,0,0.5)" };
-      default: return { main: "#ffffff", accent: "#cccccc", glow: "#ffffff", atmospheric: "#ffffff", bands: "#ffffff" };
-    }
-  }, [stage, emotion]);
-
-  const getPlanetStyles = () => {
-    switch (stage) {
-      case PlanetStage.EMPTY:
-        return {
-          className: "w-32 h-32 blur-3xl bg-blue-500/10 opacity-20",
-          label: "Void",
-          borderRadius: "50%"
-        };
-      case PlanetStage.ASTEROID:
-        return {
-          className: "w-44 h-44 bg-[#5C6B8A] shadow-[inset_-10px_-10px_30px_rgba(0,0,0,0.5)]",
-          label: "Stellar Seed",
-          texture: "radial-gradient(circle at 30% 30%, #7A8BAE 0%, #5C6B8A 100%)",
-          borderRadius: "45% 55% 65% 35% / 45% 45% 55% 55%"
-        };
-      case PlanetStage.MAGMA:
-        return {
-          className: "w-56 h-56 bg-[#3D3D4A] shadow-[0_0_40px_rgba(255,107,53,0.3),inset_-15px_-15px_30px_rgba(0,0,0,0.6)]",
-          label: "Igneous Core",
-          texture: "radial-gradient(circle at 35% 35%, #4D4D5A 0%, #3D3D4A 100%)",
-          borderRadius: "48% 52% 52% 48% / 50% 50% 50% 50%"
-        };
-      case PlanetStage.OCEAN:
-        return {
-          className: "w-64 h-64 bg-[#2B5EA7] shadow-[inset_-20px_-20px_40px_rgba(0,0,0,0.4)]",
-          label: "Oceanic World",
-          texture: "radial-gradient(circle at 30% 30%, #3B6EB7 0%, #2B5EA7 100%)",
-          borderRadius: "50% 50% 50% 50% / 52% 48% 52% 48%"
-        };
-      case PlanetStage.LIVING:
-      case PlanetStage.ASCENDED:
-        const emotionData: Record<string, { texture: string, label: string }> = {
-          happy: { texture: "radial-gradient(circle at 30% 30%, #FFE066 0%, #FFB347 100%)", label: "Happy Moon" },
-          bahagia: { texture: "radial-gradient(circle at 30% 30%, #FFE066 0%, #FFB347 100%)", label: "Bulan Bahagia" },
-          sad: { texture: "radial-gradient(circle at 30% 30%, #A8B8D0 0%, #7A8BA8 100%)", label: "Sad Moon" },
-          sedih: { texture: "radial-gradient(circle at 30% 30%, #A8B8D0 0%, #7A8BA8 100%)", label: "Bulan Sedih" },
-          love: { texture: "radial-gradient(circle at 30% 30%, #FFB7C5 0%, #FF8FA3 100%)", label: "Lovely Moon" },
-          cinta: { texture: "radial-gradient(circle at 30% 30%, #FFB7C5 0%, #FF8FA3 100%)", label: "Bulan Penuh Cinta" },
-          angry: { texture: "radial-gradient(circle at 30% 30%, #C0392B 0%, #922B21 100%)", label: "Angry Moon" },
-          marah: { texture: "radial-gradient(circle at 30% 30%, #C0392B 0%, #922B21 100%)", label: "Bulan Marah" },
-          fear: { texture: "radial-gradient(circle at 30% 30%, #2D3436 0%, #000000 100%)", label: "Moon of Fear" },
-          takut: { texture: "radial-gradient(circle at 30% 30%, #2D3436 0%, #000000 100%)", label: "Bulan Ketakutan" },
-          neutral: { texture: "radial-gradient(circle at 30% 30%, #F0EDE8 0%, #D9D5CF 100%)", label: "Silent Moon" },
-        };
-        const curE = emotion?.toLowerCase() || 'neutral';
-        const match = Object.keys(emotionData).find(key => curE.includes(key)) || 'neutral';
-        const data = emotionData[match];
-        
-        return {
-          className: `w-72 h-72 shadow-[0_0_60px_rgba(255,255,255,0.1),inset_-25px_-25px_50px_rgba(0,0,0,0.2)]`,
-          label: `${data.label}`,
-          texture: data.texture,
-          borderRadius: "50% 50% 50% 50% / 51% 49% 51% 49%"
-        };
-      default:
-        return { className: "", label: "", borderRadius: "50%" };
-    }
-  };
-
-  const config = getPlanetStyles();
+  const resolvedStage = stage ?? PlanetStage.EMPTY;
+  const label = resolvedStage === PlanetStage.LIVING || resolvedStage === PlanetStage.ASCENDED
+    ? `${STAGE_LABELS[resolvedStage]}: ${emotion?.toLowerCase() || 'neutral'}`
+    : STAGE_LABELS[resolvedStage];
 
   return (
-    <div className="relative flex items-center justify-center p-20 w-[400px] h-[400px]">
+    <div className="relative flex items-center justify-center p-20">
       <AnimatePresence mode="wait">
         <motion.div
-          key={stage}
+          key={resolvedStage}
           initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 1.1, opacity: 0 }}
-          transition={{ duration: 1.2, ease: "easeOut" }}
-          className="absolute inset-0 z-0 pointer-events-none"
+          animate={{ scale: 1, opacity: 1, y: [0, -14, 0] }}
+          exit={{ scale: 1.08, opacity: 0 }}
+          transition={{
+            duration: 1.1,
+            ease: 'easeOut',
+            y: { duration: 6, repeat: Infinity, ease: 'easeInOut' },
+          }}
+          className="relative flex items-center justify-center"
         >
-          {stage !== PlanetStage.EMPTY && (
-            <Canvas camera={{ position: [0, 0, 8], fov: 45 }}>
-              <ambientLight intensity={0.5} />
-              <pointLight position={[10, 10, 10]} intensity={1.5} color="#ffffff" />
-              <spotLight position={[-10, 10, 10]} angle={0.15} penumbra={1} intensity={1} color="#3B82F6" />
-              
-              <PlanetBody stage={stage} emotion={emotion} intensity={intensity} colors={colors} />
-              
-              <fog attach="fog" args={['#050B18', 5, 20]} />
-            </Canvas>
-          )}
+          <PlanetCanvas stage={resolvedStage} emotion={emotion} />
         </motion.div>
       </AnimatePresence>
 
-      {/* Expressive Overlays (Atmospheric Layers) */}
-      <div className={`relative ${config.className.split(' ').filter(c => c.startsWith('w-') || c.startsWith('h-')).join(' ')} pointer-events-none z-10 overflow-hidden`}>
-        {/* Emotional Weather Effects Overlay */}
-        <EmotionWeather emotion={emotion || 'neutral'} />
-
-        {/* Face Layer */}
-        {(stage === PlanetStage.LIVING || stage === PlanetStage.ASCENDED) && (
-          <PlanetFace emotion={emotion} color={colors.faceColor as string} />
-        )}
-        
-        {/* Ambient Overlay Glow */}
-        <motion.div 
-          animate={{ opacity: [0.1, 0.2, 0.1] }}
-          transition={{ duration: 4, repeat: Infinity }}
-          className={`absolute inset-0 rounded-full blur-xl pointer-events-none ${
-            emotion?.toLowerCase() === 'angry' ? 'bg-red-500/20' : 
-            emotion?.toLowerCase() === 'happy' ? 'bg-yellow-400/10' :
-            emotion?.toLowerCase() === 'love' ? 'bg-pink-400/10' : 'bg-blue-400/5'
-          }`}
-        />
-      </div>
-
-      <div className="absolute -bottom-6 text-blue-200/30 font-mono text-[9px] tracking-[0.5em] uppercase font-bold text-center w-full">
-        {config.label}
+      <div className="absolute -bottom-6 text-blue-200/30 font-mono text-[9px] tracking-[0.5em] uppercase font-bold">
+        {label}
       </div>
     </div>
   );
 };
-
